@@ -270,7 +270,7 @@ const MISSION_TEMPLATES = [
     opposition: "something old and hungry", needs: ["battle", "lore"], danger: 5 },
   { problem: "a prince has disappeared on the road to his own wedding",
     place: "the King's Road", region: "The Border Towns",
-    opposition: "whoever took him — or whoever he ran from", needs: ["wilds", "words"], danger: 3 },
+    opposition: "whoever took him - or whoever he ran from", needs: ["wilds", "words"], danger: 3 },
   { problem: "a relic was stolen from the cathedral crypt",
     place: "the undercroft of Vael", region: "The City of Vael",
     opposition: "a thieves' ring with a patron", needs: ["shadow", "lore"], danger: 3 },
@@ -331,14 +331,14 @@ const COMPLICATIONS = [
   ["A child from the village has followed them and is now underfoot.", "cautious", "heart"],
   ["They find writing in a script none of the locals can read.", "curious", "lore"],
   ["A rival company arrives, wanting the same prize.", "bold", "battle"],
-  ["The enemy offers to negotiate — it may be a trap.", "diplomatic", "words"],
+  ["The enemy offers to negotiate - it may be a trap.", "diplomatic", "words"],
   ["Night falls early, and the path forks in the dark.", "cautious", "wilds"],
   ["A wounded enemy soldier is left behind by his own side.", "diplomatic", "heart"],
   ["Something is following them. It leaves no tracks.", "curious", "shadow"],
   ["The local lord demands they swear to him before proceeding.", "ruthless", "words"],
   ["A locked door stands between them and the objective.", "bold", "shadow"],
   ["Half the party falls sick from bad water.", "cautious", "heart"],
-  ["An old shrine offers shelter — and a warning carved in stone.", "curious", "lore"],
+  ["An old shrine offers shelter - and a warning carved in stone.", "curious", "lore"],
   ["The enemy sets a fire to smoke them out.", "bold", "battle"],
   ["A ferryman wants triple, and he's the only ferryman.", "diplomatic", "words"],
   ["The map is wrong. Deliberately wrong.", "curious", "wilds"],
@@ -348,7 +348,7 @@ const COMPLICATIONS = [
   ["Someone in the tavern is selling the party's route to the enemy.", "ruthless", "shadow"],
   ["A shrine-keeper offers a blessing in exchange for a truth.", "curious", "heart"],
   ["The bridge is held by a knight sworn to challenge all comers.", "bold", "battle"],
-  ["Livestock have been slaughtered — but not eaten.", "curious", "lore"],
+  ["Livestock have been slaughtered - but not eaten.", "curious", "lore"],
   ["A deserter begs to join them; he knows the enemy camp.", "ruthless", "words"],
   ["Fog comes down so thick the party can't see their own torches.", "cautious", "wilds"],
   ["An old woman insists one of the party owes her family a debt.", "diplomatic", "heart"],
@@ -413,7 +413,7 @@ class Hero {
   get capability() { return CAPABILITY[this.cls]; }
   card() {
     const lines = [
-      `${this.name} — ${this.cls} (${CLASSES[this.cls]})`,
+      `${this.name} - ${this.cls} (${CLASSES[this.cls]})`,
       `${cap(this.background)}. ${this.virtue}, but ${this.vice.toLowerCase()}.`,
       `Here ${this.motivation}. Speaks sometimes of ${this.relationship}.`,
     ];
@@ -636,7 +636,7 @@ class Game {
       h.note = "You spared them once. They have not forgotten.";
       this.roster.push(h);
       this.alliesWon += 1;
-      note(`» ${name} — the enemy your heroes once spared — stands at the door, asking to serve. You find you have already decided.`);
+      note(`» ${name} - the enemy your heroes once spared - stands at the door, asking to serve. You find you have already decided.`);
       this.record(`${name}, once an enemy, joined the Hall.`);
     }
 
@@ -676,7 +676,7 @@ class Game {
     const h = R.choice(candidates);
     const region = R.choice(this.regions.filter((r) => r.health > 0)) || this.regions[0];
     const m = new Mission({
-      problem: `${h.name}'s own matter — ${h.motivation.replace(/^to /, "the need to ")} — has found them at last`,
+      problem: `${h.name}'s own matter - ${h.motivation.replace(/^to /, "the need to ")} - has found them at last`,
       place: `the road where ${h.relationship} waits`, region: region.name,
       opposition: "the past, which does not negotiate",
       needs: [h.capability, "heart"], danger: 3,
@@ -685,14 +685,14 @@ class Game {
     m.party.push(h);
     h.onMission = true;
     this.pending.push([h, m]);
-    note(`» ${h.name} finds you by the fire. "I came here ${h.motivation}. It's time. Will you help me finish it?" (Council Table — the mission is prepared like any other. Only it isn't.)`);
+    note(`» ${h.name} finds you by the fire. "I came here ${h.motivation}. It's time. Will you help me finish it?" (Council Table - the mission is prepared like any other. Only it isn't.)`);
   }
 
   async maybeOmen() {
     const thresholds = [
-      [20, "A monk arrives from the east, barefoot, his order's seal burned into a strip of leather. He says his monastery no longer has mornings — just a lightening of the dark. He asks for nothing. He only wanted someone outside the Eastmarch to know."],
-      [45, "Refugees reach the Hall gates at dusk — forty of them, quiet in a way crowds never are. A little girl among them draws the same picture over and over: a door, standing open in a field, and something long coming through it."],
-      [70, "An old soldier you once turned away — or perhaps never met — rides in without dismounting. \"Whatever you're going to do,\" he says, \"the east can't wait for you to be ready.\" He leaves his sword on the step and rides west."],
+      [20, "A monk arrives from the east, barefoot, his order's seal burned into a strip of leather. He says his monastery no longer has mornings - just a lightening of the dark. He asks for nothing. He only wanted someone outside the Eastmarch to know."],
+      [45, "Refugees reach the Hall gates at dusk - forty of them, quiet in a way crowds never are. A little girl among them draws the same picture over and over: a door, standing open in a field, and something long coming through it."],
+      [70, "An old soldier you once turned away - or perhaps never met - rides in without dismounting. \"Whatever you're going to do,\" he says, \"the east can't wait for you to be ready.\" He leaves his sword on the step and rides west."],
     ];
     for (const [t, text] of thresholds) {
       if (this.dread >= t && !this.omensSeen.includes(t)) {
@@ -700,7 +700,7 @@ class Game {
         header("An Omen");
         omen(text);
         const act = await choose("What do you do with this?", [
-          ["Send scouts east — you need to know what you face", "scout"],
+          ["Send scouts east - you need to know what you face", "scout"],
           ["Double the watch and keep the Hall's work going", "steady"],
           ["Ask the Library to search the old accounts for anything like this", "study"],
         ]);
@@ -714,7 +714,7 @@ class Game {
           this.record("The Hall stood steady while the east darkened.");
         } else {
           this.dread = Math.max(0, this.dread - 4);
-          note("The librarian finds a pattern in the old accounts — and a mistake the last age made. You will not repeat it. The dark's advance loses a step.");
+          note("The librarian finds a pattern in the old accounts - and a mistake the last age made. You will not repeat it. The dark's advance loses a step.");
           this.record("The Library found the old age's mistake in time to avoid it.");
         }
         await pause();
@@ -792,8 +792,8 @@ class Game {
     const names = m.party.map((h) => h.name).join(", ");
     if (m.dayOut <= m.events.length) {
       const [text, bestStance, helpful] = m.events[m.dayOut - 1];
-      header(`Word From the Road — day ${m.dayOut}`);
-      say(`(${names} — ${m.place})`);
+      header(`Word From the Road - day ${m.dayOut}`);
+      say(`(${names} - ${m.place})`);
       say(text);
       quote(this.resolveEvent(m, bestStance, helpful));
       await pause();
@@ -809,7 +809,7 @@ class Game {
     const notes = [];
     if (m.stance === bestStance) {
       bonus += 2;
-      notes.push(`They remember your advice — ${STANCES[m.stance][1].split(".")[0].toLowerCase()}.`);
+      notes.push(`They remember your advice - ${STANCES[m.stance][1].split(".")[0].toLowerCase()}.`);
     }
     const helper = m.party.find((h) => h.capability === helpful);
     if (helper) {
@@ -832,7 +832,7 @@ class Game {
       actor.wounded = true;
       notes.push(`It goes badly. ${actor.name} is hurt.`);
     } else {
-      notes.push("They manage — barely, and it costs them a day's strength.");
+      notes.push("They manage - barely, and it costs them a day's strength.");
     }
     return notes.join(" ");
   }
@@ -883,14 +883,14 @@ class Game {
         h.questDone = true;
         h.confidence += 1;
         h.note = `Settled the matter that brought them here. What's left is choice, not need.`;
-        note(`» ${h.name} came here ${h.motivation}. That story is finished now — and still, they stay. That is a different kind of loyalty.`);
+        note(`» ${h.name} came here ${h.motivation}. That story is finished now - and still, they stay. That is a different kind of loyalty.`);
         this.record(`${h.name} settled their own matter and chose to remain.`);
       }
     }
     this.record(`${names} resolved this: ${m.problem}. The Hall's name grew.`);
     if ((m.stance === "diplomatic" || m.stance === "cautious") && R.random() < 0.6) {
       const name = R.choice(FIRST_NAMES);
-      quote(`One of them clears their throat. "We spared their leader. ${name}, they were called. Watch the roads — I think we'll meet them again."`);
+      quote(`One of them clears their throat. "We spared their leader. ${name}, they were called. Watch the roads - I think we'll meet them again."`);
       this.sparedEnemies.push(name);
     } else if (R.random() < 0.4) {
       const r = makeHero();
@@ -902,7 +902,7 @@ class Game {
 
   missionCostly(m, names) {
     say(`${names} return quiet and mud-spattered.`);
-    say(`The matter of ${m.problem} is settled — but not cleanly, and not for free.`);
+    say(`The matter of ${m.problem} is settled - but not cleanly, and not for free.`);
     this.renown += 1;
     const h = R.choice(m.party);
     h.wounded = true;
@@ -912,7 +912,7 @@ class Game {
       const p = m.party.find((x) => x.id === m.personalFor);
       if (p) {
         p.questDone = true;
-        p.note = "Their own matter is settled — at a price they don't discuss.";
+        p.note = "Their own matter is settled - at a price they don't discuss.";
         this.record(`${p.name} settled their own matter, at a price.`);
       }
     }
@@ -922,7 +922,7 @@ class Game {
 
   missionFailForward(m, names) {
     say(`${names} return without what they went for.`);
-    grim(`The matter of ${m.problem} stands unresolved — and it is growing.`);
+    grim(`The matter of ${m.problem} stands unresolved - and it is growing.`);
     this.bumpRegion(m.region, -1);
     if (m.personalFor) {
       const p = m.party.find((x) => x.id === m.personalFor);
@@ -936,7 +936,7 @@ class Game {
       }
     }
     const follow = new Mission({
-      problem: m.problem + " — worse now, and bolder",
+      problem: m.problem + " - worse now, and bolder",
       place: m.place, region: m.region,
       opposition: m.opposition,
       needs: m.needs, danger: m.danger + 1,
@@ -959,12 +959,12 @@ class Game {
     const survivors = m.party.filter((h) => h.alive);
     for (const h of survivors) h.wounded = true;
     if (survivors.length)
-      li(survivors.map((h) => h.name).join(", ") + ` — wounded, and carrying ${dead.name}'s effects.`);
+      li(survivors.map((h) => h.name).join(", ") + ` - wounded, and carrying ${dead.name}'s effects.`);
     else li("No one.");
-    grim(`${dead.name} — ${dead.background}, who came here ${dead.motivation} — will not come home. Somewhere, ${dead.relationship} waits for a letter that now falls to you to write.`);
+    grim(`${dead.name} - ${dead.background}, who came here ${dead.motivation} - will not come home. Somewhere, ${dead.relationship} waits for a letter that now falls to you to write.`);
     this.renown -= 1;
     this.bumpRegion(m.region, -1);
-    this.record(`${dead.name} died at ${m.place}. The problem — ${m.problem} — remains.`);
+    this.record(`${dead.name} died at ${m.place}. The problem - ${m.problem} - remains.`);
     this.rumours.push(`A candle burns beneath ${dead.name}'s portrait in the Hall.`);
     const mourner = survivors.find((h) => h.bonds.some((n) => n.startsWith(dead.name)));
     if (mourner)
@@ -981,10 +981,10 @@ class Game {
     this.pending.forEach(([h, m], i) =>
       opts.push([(m.personalFor ? `Help ${h.name} settle their own matter` : `Prepare the mission: ${m.title().toLowerCase()}`), ["prepare", i]]));
     if (this.dread >= 70 || this.day >= 30) {
-      opts.push(["March east. End this — or be ended.", ["finale", null], "dark"]);
+      opts.push(["March east. End this - or be ended.", ["finale", null], "dark"]);
     }
     if (!opts.length) {
-      say("The table is empty. Maps, candle stubs, old wine rings. Someone will come — someone always comes.");
+      say("The table is empty. Maps, candle stubs, old wine rings. Someone will come - someone always comes.");
       return;
     }
     opts.push(["Step away", ["back", null]]);
@@ -1000,10 +1000,10 @@ class Game {
     for (const line of h.card()) say(line);
     const reg = this.region(m.region);
     say(`The problem: ${m.problem}, out at ${m.place}. Opposition, as far as anyone knows: ${m.opposition}.`);
-    if (reg) say(`That's ${reg.name} — ${this.regionWord(reg)}, by most accounts.`);
+    if (reg) say(`That's ${reg.name} - ${this.regionWord(reg)}, by most accounts.`);
     say("Difficulty: unknown. (The Library may know more.)");
     const action = await choose(
-      "Three questions sit behind your eyes — can you trust them, can they succeed, what will they become. What do you do?", [
+      "Three questions sit behind your eyes - can you trust them, can they succeed, what will they become. What do you do?", [
       ["Take on the mission (they'll join the party)", "accept"],
       ["Take them into the Hall, but hold the mission for now", "recruit"],
       ["Turn them away", "reject"],
@@ -1020,7 +1020,7 @@ class Game {
       this.visitors.splice(idx, 1);
       this.roster.push(h);
       this.record(`${h.name} joined the Hall, their errand set aside.`);
-      say(`${h.name} joins the Hall. The problem at ${m.place} waits — problems left waiting rarely shrink.`);
+      say(`${h.name} joins the Hall. The problem at ${m.place} waits - problems left waiting rarely shrink.`);
       this.bumpRegion(m.region, -1);
       this.rumours.push(`Things at ${m.place} are said to be getting worse.`);
     } else if (action === "reject") {
@@ -1034,12 +1034,12 @@ class Game {
 
   async prepareMission(idx) {
     const [, m] = this.pending[idx];
-    header(`Preparation — ${m.title()}`);
+    header(`Preparation - ${m.title()}`);
     const available = this.roster.filter(
       (h) => !h.onMission && h.alive && !m.party.includes(h));
     while (m.party.length < 3 && available.length) {
       const opts = available.map((h) => [
-        `${h.name} the ${h.cls} — ${h.virtue}/${h.vice}`
+        `${h.name} the ${h.cls} - ${h.virtue}/${h.vice}`
         + (h.wounded ? " (wounded)" : "")
         + (m.party.some((p) => p.bonds.includes(h.name)) ? " (bonded with the party)" : ""), h]);
       opts.push(["Send no one else", null]);
@@ -1050,7 +1050,7 @@ class Game {
       available.splice(available.indexOf(pick), 1);
     }
     if (this.armory.length) {
-      const opts = this.armory.map((it) => [`${it.name} — ${it.why}`, it]);
+      const opts = this.armory.map((it) => [`${it.name} - ${it.why}`, it]);
       opts.push(["Keep your supplies; another hero may need them tomorrow", null]);
       const it = await choose("From the Armory, you may lend one thing.", opts);
       if (it) {
@@ -1059,7 +1059,7 @@ class Game {
         say(`${m.party[0].name} takes ${it.name} with both hands.`);
       }
     }
-    say("They shoulder their packs. At the door, they stop and look back. One question remains — the one that matters.");
+    say("They shoulder their packs. At the door, they stop and look back. One question remains - the one that matters.");
     const stance = await choose('"What do you tell them before they leave?"',
       Object.keys(STANCES).map((k) => [`"${STANCES[k][1]}"  (${STANCES[k][0]})`, k]));
     m.stance = stance;
@@ -1087,7 +1087,7 @@ class Game {
     }
     say("Every item here is memorable for one reason:");
     for (const it of this.armory) {
-      li(`• ${it.name} — ${it.why}` + (it.fx.dawn ? " (it hates the dark, and the dark knows it)" : ""));
+      li(`• ${it.name} - ${it.why}` + (it.fx.dawn ? " (it hates the dark, and the dark knows it)" : ""));
     }
   }
 
@@ -1104,8 +1104,8 @@ class Game {
     if (!m) { quote('"Then stop letting the door swing."'); return; }
     if (m === "shadow") {
       quote('She is quiet for a long moment. Then she clears a table and lays out three books you have never seen her touch.');
-      quote('"It has come before. The accounts disagree on everything except this: it was not beaten by armies. It was beaten by people who walked in with the dawn behind them — heroes it could not make afraid, carrying things it could not make dark, led by someone whose name meant something."');
-      li("Heroes with settled hearts weigh most — the confident, the bonded, the ones whose own stories are finished.");
+      quote('"It has come before. The accounts disagree on everything except this: it was not beaten by armies. It was beaten by people who walked in with the dawn behind them - heroes it could not make afraid, carrying things it could not make dark, led by someone whose name meant something."');
+      li("Heroes with settled hearts weigh most - the confident, the bonded, the ones whose own stories are finished.");
       li("Certain relics matter in the dark. She taps the Armory wall, twice.");
       li("Allies you made of enemies count double. The Shadow does not understand mercy. It never has.");
       if (this.dread >= 70) quote('"And it is close now. You know that, don\'t you."');
@@ -1127,7 +1127,7 @@ class Game {
     header("The Map Table");
     say("Six regions, pinned corners, wax stains. Someone keeps this current.");
     for (const r of this.regions) {
-      const line = `${r.name} — ${this.regionWord(r)}. (${r.desc})`;
+      const line = `${r.name} - ${this.regionWord(r)}. (${r.desc})`;
       if (r.health === 0) grim("• " + line);
       else if (r.health <= 2) el("li", "• " + line).style.color = "var(--danger)";
       else li("• " + line);
@@ -1161,7 +1161,7 @@ class Game {
 
   entrance() {
     this.updateStatus();
-    header(`The Hall — Day ${this.day}`);
+    header(`The Hall - Day ${this.day}`);
     say(R.choice(FLAVOUR));
     if (this.dread >= 30 && R.random() < 0.5)
       omen(R.choice([
@@ -1207,7 +1207,7 @@ class Game {
     if (forced) {
       grim("You waited, and the waiting is over. The Shadow has crossed out of the Eastmarch. There is no more east to lose. The Hall empties itself onto the road because there is nothing else left to do.");
     } else {
-      say("You have decided. The Hall goes east — not to hold a line, but to end the thing that draws it.");
+      say("You have decided. The Hall goes east - not to hold a line, but to end the thing that draws it.");
     }
     const available = this.roster.filter((h) => h.alive && !h.onMission && !h.wounded);
     const anyHero = this.roster.filter((h) => h.alive && !h.onMission);
@@ -1219,7 +1219,7 @@ class Game {
       say("Choose who walks into the dark. Choose well; there is no second march.");
       while (party.length < 4 && pool.length) {
         const opts = pool.map((h) => [
-          `${h.name} the ${h.cls} — ${h.virtue}/${h.vice}`
+          `${h.name} the ${h.cls} - ${h.virtue}/${h.vice}`
           + (h.questDone ? " (settled heart)" : "")
           + (h.wounded ? " (wounded)" : "")
           + (party.some((p) => p.bonds.includes(h.name)) ? " (bonded)" : ""), h]);
@@ -1235,7 +1235,7 @@ class Game {
     let armory = [...this.armory];
     while (items.length < 2 && armory.length) {
       const opts = armory.map((it) => [
-        `${it.name} — ${it.why}` + (it.fx.dawn ? " ✦" : ""), it]);
+        `${it.name} - ${it.why}` + (it.fx.dawn ? " ✦" : ""), it]);
       opts.push([items.length ? "Enough. Weight slows the living." : "They carry nothing but themselves", null]);
       const it = await choose("What do they carry into the dark? (choose up to two)", opts);
       if (!it) break;
@@ -1254,7 +1254,7 @@ class Game {
     let strength = this.finaleStrength(party, items);
     if (forced) strength -= 2;
 
-    // Act 1 — the road east
+    // Act 1 - the road east
     header("The Road East");
     say("The land changes a day out. Colour goes first, then birdsong, then the feeling that roads lead anywhere. The party walks through villages where doors stand open and kettles sit cold.");
     if (party.length) {
@@ -1265,23 +1265,23 @@ class Game {
     }
     await pause();
 
-    // Act 2 — the door in the field
+    // Act 2 - the door in the field
     header("The Door in the Field");
     say("It is exactly what the refugee girl drew: a door, standing open in a field, and the long dark coming through it like water finding a crack.");
     if (party.length) {
       const reader = party.find((h) => h.capability === "lore");
       if (reader) {
         strength += 2;
-        say(`${reader.name} reads the doorframe aloud — the old age's mistake, carved as a warning by whoever survived it. Now you will not repeat it.`);
+        say(`${reader.name} reads the doorframe aloud - the old age's mistake, carved as a warning by whoever survived it. Now you will not repeat it.`);
       } else {
         say("There is writing on the doorframe. No one in the party can read it. They will have to do this the hard way.");
       }
       if (this.alliesWon > 0)
-        note(`And out of the grey come ${this.alliesWon === 1 ? "an ally" : this.alliesWon + " allies"} you never planned for — enemies your heroes once spared, standing now where it counts. The Shadow does not understand mercy. It is about to be beaten by it.`);
+        note(`And out of the grey come ${this.alliesWon === 1 ? "an ally" : this.alliesWon + " allies"} you never planned for - enemies your heroes once spared, standing now where it counts. The Shadow does not understand mercy. It is about to be beaten by it.`);
     }
     await pause();
 
-    // Act 3 — the last hero
+    // Act 3 - the last hero
     header("The Last Hero");
     const roll = R.randint(1, 6);
     const total = strength + roll;
@@ -1306,8 +1306,8 @@ class Game {
     const title = phil ? PHILOSOPHY[phil][0] : "the keeper of the Hall";
     if (tier === "dawn") {
       note("THE DAWN COMES.");
-      say(`The door is shut, and the land remembers how to have mornings. In the years after, the Eastmarch is resettled by people who plant lantern-trees at their gates — a custom no one explains and everyone keeps.`);
-      say(`The Chronicle's last page names every hero who marched, and closes with a line about you, ${title}: "They asked the right questions of the right people, and then — this mattered more — they let them answer."`);
+      say(`The door is shut, and the land remembers how to have mornings. In the years after, the Eastmarch is resettled by people who plant lantern-trees at their gates - a custom no one explains and everyone keeps.`);
+      say(`The Chronicle's last page names every hero who marched, and closes with a line about you, ${title}: "They asked the right questions of the right people, and then - this mattered more - they let them answer."`);
       this.record("The Shadow was ended. The dawn came up gold.");
     } else if (tier === "hardwon") {
       note("A HARD-WON DAWN.");
@@ -1323,13 +1323,13 @@ class Game {
       say(`The east heals slowly, the way people do. The Chronicle calls you ${title}, and the bards get most of it wrong, and the ones who were there let them.`);
     } else if (tier === "pyrrhic") {
       grim("THE LONG GREY.");
-      say("The door is not shut. It is narrowed — wedged with courage and paid for in names the Chronicle takes three pages to list. The Shadow is not ended; it is taught, for the first time, to be patient.");
+      say("The door is not shut. It is narrowed - wedged with courage and paid for in names the Chronicle takes three pages to list. The Shadow is not ended; it is taught, for the first time, to be patient.");
       say(`The Hall stands. The watch continues. Somewhere a new ranger, nineteen and rain-soaked, is walking toward your gate to ask if the trail is safe. You will lie to her less than most would, ${title}. It is what you have instead of victory.`);
-      this.record("The Shadow was held — not beaten. The watch continues.");
+      this.record("The Shadow was held - not beaten. The watch continues.");
     } else {
       grim("THE LONG NIGHT.");
       say("There are histories of what happened next, but they are written in other lands, by people who heard it third-hand: that the east went out like a lamp, and then the border towns, and that the last light anyone reported was a single hall on a hill, its windows lit, its doors open, taking people in until the dark reached the step.");
-      say(`No Chronicle of yours survives. But this much is carried out by the refugees, retold until it hardens into legend: the Hall never closed. Whatever else is said of you, ${title} — it never closed.`);
+      say(`No Chronicle of yours survives. But this much is carried out by the refugees, retold until it hardens into legend: the Hall never closed. Whatever else is said of you, ${title} - it never closed.`);
       this.record("The night came. The Hall's doors stayed open to the last.");
     }
     await pause();
@@ -1348,13 +1348,13 @@ class Game {
 
   async run(isNew) {
     if (isNew) {
-      say("You are the master of a modest Hall. Heroes will come to you with problems. You will judge them, equip them, and — most importantly — advise them. Then they will walk out the door, and the story will happen without you.");
-      omen("One more thing, which you do not know yet: far to the east, something old has begun to wake. You have perhaps a season. Spend it on people. It will turn out — though no one will believe this until the end — that people were the only preparation that counted.");
+      say("You are the master of a modest Hall. Heroes will come to you with problems. You will judge them, equip them, and - most importantly - advise them. Then they will walk out the door, and the story will happen without you.");
+      omen("One more thing, which you do not know yet: far to the east, something old has begun to wake. You have perhaps a season. Spend it on people. It will turn out - though no one will believe this until the end - that people were the only preparation that counted.");
       await pause();
       this.arriveElara();
     } else {
       say("The Hall again. The fire kept in, the Chronicle where you left it.");
-      note(`(Campaign restored — day ${this.day}.)`);
+      note(`(Campaign restored - day ${this.day}.)`);
     }
     while (!this.over) {
       this.entrance();
