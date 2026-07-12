@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Last Hero</title>
+<style>
+  :root {
+    --bg: #14100c;
+    --panel: #1d1710;
+    --ink: #d8c9a3;
+    --dim: #8a7a5c;
+    --accent: #e0a84a;
+    --danger: #c96b4a;
+    --good: #8fae6a;
+    --shadow: #7a6a9e;
+    --border: #3a2f20;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+  #frame { max-width: 760px; margin: 0 auto; padding: 20px 18px 40vh; }
+  .hdr {
+    margin: 34px 0 18px; text-align: center; color: var(--accent);
+    letter-spacing: 3px; font-variant: small-caps; font-size: 21px;
+  }
+  .hdr::before, .hdr::after {
+    content: ""; display: block; height: 1px; margin: 8px 0;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .p  { margin: 10px 0; }
+  .q  { margin: 10px 0 10px 22px; color: var(--dim); font-style: italic; }
+  .note { margin: 10px 0; color: var(--good); }
+  .grim { margin: 10px 0; color: var(--danger); }
+  .omen { margin: 10px 0; color: var(--shadow); font-style: italic; }
+  .li { margin: 4px 0 4px 22px; }
+  .rulebreak { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+  #choices { margin: 18px 0; }
+  .prompt { margin: 16px 0 10px; color: var(--accent); }
+  button.opt {
+    display: block; width: 100%; text-align: left; margin: 6px 0;
+    padding: 10px 14px; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 4px; font: inherit;
+    cursor: pointer; transition: border-color .12s, background .12s;
+  }
+  button.opt:hover { border-color: var(--accent); background: #262019; }
+  button.opt.dark { border-color: #4a3f66; }
+  button.opt.dark:hover { border-color: var(--shadow); }
+  .past { opacity: .55; margin: 10px 0; }
+  .chosen { color: var(--accent); font-style: italic; margin: 6px 0 6px 22px; }
+  #titlecard { text-align: center; padding: 70px 20px 20px; }
+  #titlecard h1 {
+    font-variant: small-caps; letter-spacing: 6px; color: var(--accent);
+    font-weight: normal; font-size: 34px; margin-bottom: 6px;
+  }
+  #titlecard .sub { color: var(--dim); font-style: italic; }
+  #statusbar {
+    position: sticky; top: 0; z-index: 5;
+    background: linear-gradient(var(--bg) 85%, transparent);
+    padding: 8px 0 14px; margin-bottom: 6px;
+    font-size: 14px; color: var(--dim); display: none;
+    letter-spacing: 1px;
+  }
+  #statusbar .east { color: var(--shadow); }
+  #statusbar b { color: var(--ink); font-weight: normal; }
+</style>
+</head>
+<body>
+<div id="frame">
+  <div id="statusbar"></div>
+  <div id="titlecard">
+    <h1>The Last Hero</h1>
+    <div class="sub">a game about making interesting decisions about interesting people</div>
+  </div>
+  <div id="log"></div>
+  <div id="choices"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ================================================================ rng */
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const seedParam = new URLSearchParams(location.search).get("seed");
+const rand = mulberry32(seedParam ? (parseInt(seedParam, 10) || 1) : (Date.now() & 0xffffffff));
+const R = {
+  random: () => rand(),
+  randint: (a, b) => a + Math.floor(rand() * (b - a + 1)),
+  choice: (arr) => arr[Math.floor(rand() * arr.length)],
+  sample: (arr, n) => {
+    const copy = arr.slice(), out = [];
+    for (let i = 0; i < n && copy.length; i++)
+      out.push(copy.splice(Math.floor(rand() * copy.length), 1)[0]);
+    return out;
+  },
+};
+
+/* ================================================================ ui */
+
+const log = document.getElementById("log");
+const choicesEl = document.getElementById("choices");
+const statusbar = document.getElementById("statusbar");
+
+function scrollDown() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+}
+function el(cls, text) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.textContent = text;
+  log.appendChild(d);
+  scrollDown();
+  return d;
+}
+const say   = (t) => el("p", t);
+const quote = (t) => el("q", t);
+const note  = (t) => el("note", t);
+const grim  = (t) => el("grim", t);
+const omen  = (t) => el("omen", t);
+const li    = (t) => el("li", t);
+const header = (t) => el("hdr", t);
+function hr() {
+  const h = document.createElement("hr");
+  h.className = "rulebreak";
+  log.appendChild(h);
+}
+function clearLog() { log.innerHTML = ""; }
+
+function choose(prompt, options) {
+  // options: [label, value] or [label, value, "dark"]
+  return new Promise((resolve) => {
+    if (prompt) {
+      const p = document.createElement("div");
+      p.className = "prompt";
+      p.textContent = prompt;
+      choicesEl.appendChild(p);
+    }
+    options.forEach(([label, value, style]) => {
+      const b = document.createElement("button");
+      b.className = "opt" + (style === "dark" ? " dark" : "");
+      b.textContent = label;
+      b.onclick = () => {
+        choicesEl.innerHTML = "";
+        if (prompt) el("past", prompt);
+        el("chosen", "➤ " + label);
+        resolve(value);
+      };
+      choicesEl.appendChild(b);
+    });
+    scrollDown();
+  });
+}
+const pause = () => choose("", [["Continue…", null]]);
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/* ================================================================ content */
+
+const CLASSES = {
+  Knight:   "can hold the line",
+  Ranger:   "can track quarry and avoid ambushes",
+  Scholar:  "can decipher ancient things",
+  Priest:   "can calm the frightened and tend the wounded",
+  Rogue:    "can go unseen and open what is locked",
+  Diplomat: "can talk almost anyone into almost anything",
+};
+const CAPABILITY = {
+  Knight: "battle", Ranger: "wilds", Scholar: "lore",
+  Priest: "heart", Rogue: "shadow", Diplomat: "words",
+};
+const BACKGROUNDS = [
+  "blacksmith's daughter", "former soldier", "runaway noble", "hunter's son",
+  "disgraced priest", "orphan of the plague years", "retired smuggler",
+  "failed apprentice mage", "shepherd from the high valleys", "ex-bandit",
+  "gravedigger's child", "shipwreck survivor", "deserter from the levies",
+  "innkeeper's youngest", "circus knife-thrower", "monastery runaway",
+  "mercer's clerk who burned the ledgers", "witch-finder who stopped believing",
+];
+const VIRTUE_VICE = [
+  ["Brave", "Reckless"], ["Honest", "Naive"], ["Compassionate", "Indecisive"],
+  ["Ambitious", "Arrogant"], ["Loyal", "Stubborn"], ["Clever", "Manipulative"],
+  ["Patient", "Passive"], ["Devout", "Unbending"],
+];
+const IDEALIST_VV = [["Brave", "Reckless"], ["Honest", "Naive"],
+                     ["Compassionate", "Indecisive"], ["Loyal", "Stubborn"]];
+const RUTHLESS_VV = [["Ambitious", "Arrogant"], ["Clever", "Manipulative"]];
+const MOTIVATIONS = [
+  "to find a missing father", "to redeem a past failure", "to escape a debt",
+  "to prove the village wrong", "to avenge a burned home", "to earn a knighthood",
+  "to feed a starving family", "to forget someone", "to be remembered",
+  "to repay a life-debt", "to outrun a prophecy", "to buy back a family farm",
+  "to finish what a dead friend started", "to deserve a name they stole",
+];
+const RELATIONSHIPS = [
+  "an estranged daughter", "a rival from childhood", "a brother in a bandit gang",
+  "a dying mentor", "a sweetheart left behind", "a creditor with a long memory",
+  "a village elder who raised them", "a twin they haven't seen in years",
+  "a commander they failed", "a child they promised to return to",
+];
+const FIRST_NAMES = [
+  "Rowan", "Elara", "Bram", "Sable", "Tamsin", "Corin", "Isolde", "Fenn",
+  "Maera", "Dain", "Liria", "Osric", "Wren", "Cassian", "Yara", "Toby",
+  "Sorrel", "Edda", "Garrick", "Nell", "Hesper", "Aldric", "Petra", "Silas",
+  "Mirren", "Colm", "Verity", "Jorah", "Anwen", "Rafe",
+];
+
+/* Items. fx keys are capabilities; special keys: single_use, dawn (counts in the finale). */
+const ITEMS = [
+  ["The Lantern of Dawn", "heroes carrying it are far less likely to become lost", { wilds: 2, dawn: 1 }],
+  ["The Broken Crown", "nobles respect the bearer; rebels distrust them", { words: 2, shadow: -1 }],
+  ["The Widowmaker", "easier to slay monsters; harder to negotiate", { battle: 3, words: -2 }],
+  ["A Well-Worn Shield", "it has stopped worse than this before", { battle: 1 }],
+  ["The Quiet Boots", "footsteps make no sound on any floor", { shadow: 2 }],
+  ["The Annotated Bestiary", "someone has written 'DON'T' next to several entries", { lore: 2 }],
+  ["A Vial of Saint's Tears", "one dose; it has never failed to save a life", { heart: 3, single_use: 1 }],
+  ["The Unbroken Bell", "rung once, it steadies every frightened heart in earshot", { heart: 2, dawn: 1 }],
+  ["The Cartographer's Regret", "a map of places its maker wished he'd never found", { wilds: 1, lore: 1 }],
+  ["A Letter of Nine Seals", "opens doors that swords cannot", { words: 3 }],
+  ["The Grave-Cold Key", "it fits no lock you have found. Yet.", { shadow: 1, lore: 1 }],
+  ["Morningstar Banner", "armies have rallied to it. Twice, it rallied back", { battle: 2, dawn: 1 }],
+  ["The Alchemist's Last Words", "a recipe, half-burned; the half that remains works", { lore: 2, single_use: 1 }],
+  ["A Ring of Honest Iron", "the wearer cannot lie, and everyone somehow knows it", { words: 1, heart: 1 }],
+  ["The Hollow Coin", "spent a hundred times, it always finds its way home", { shadow: 2, words: 1 }],
+];
+
+const STANCES = {
+  cautious:   ["Cautious",   "Avoid unnecessary risks. Protect the innocent. Come home."],
+  bold:       ["Bold",       "Push forward. Take the initiative. Accept losses for success."],
+  diplomatic: ["Diplomatic", "Talk first. Avoid bloodshed. Make friends of enemies."],
+  ruthless:   ["Ruthless",   "The mission above all else. Whatever it costs."],
+  curious:    ["Curious",    "Investigate everything. Knowledge is worth the delay."],
+};
+const PHILOSOPHY = {
+  cautious:   ["The Compassionate Mentor", "Heroes trust you. Idealists seek your hall; mercenaries drift away."],
+  diplomatic: ["The Peacemaker", "Old enemies send envoys. Some call it wisdom. Some call it weakness."],
+  bold:       ["The Iron Commander", "Your missions succeed. Your graveyard grows. Soldiers respect you."],
+  ruthless:   ["The Opportunist", "Wealth and results accumulate. Trust does not."],
+  curious:    ["The Scholar", "Ancient orders write to you. Your expeditions go in knowing more."],
+};
+
+/* Regions. Health runs 0 (fallen) to 5 (thriving); all start at 3. */
+const REGION_DEFS = [
+  ["The Blackwood", "old forest, older paths"],
+  ["The Mill-Country", "grain, rivers, patient people"],
+  ["The City of Vael", "walls, coin, and knives behind both"],
+  ["The Border Towns", "half a dozen places the maps disagree about"],
+  ["The High Valleys", "sheep, snow, and long memories"],
+  ["The Eastmarch", "the sun rises there. Lately, it seems to hesitate"],
+];
+
+const MISSION_TEMPLATES = [
+  { problem: "a village is starving after the granary burned",
+    place: "the mill-country downriver", region: "The Mill-Country",
+    opposition: "hoarders and desperate men", needs: ["words", "heart"], danger: 2 },
+  { problem: "a dragon has been seen circling the eastern peaks",
+    place: "the eastern peaks", region: "The Eastmarch",
+    opposition: "something old and hungry", needs: ["battle", "lore"], danger: 5 },
+  { problem: "a prince has disappeared on the road to his own wedding",
+    place: "the King's Road", region: "The Border Towns",
+    opposition: "whoever took him — or whoever he ran from", needs: ["wilds", "words"], danger: 3 },
+  { problem: "a relic was stolen from the cathedral crypt",
+    place: "the undercroft of Vael", region: "The City of Vael",
+    opposition: "a thieves' ring with a patron", needs: ["shadow", "lore"], danger: 3 },
+  { problem: "a plague is spreading through the border town",
+    place: "the border town of Marsh End", region: "The Border Towns",
+    opposition: "fear, quarantine riots, and the sickness itself", needs: ["heart", "lore"], danger: 4 },
+  { problem: "a haunted mine has reopened on its own",
+    place: "the old Deepdelve workings", region: "The High Valleys",
+    opposition: "whatever unsealed the doors", needs: ["lore", "battle"], danger: 4 },
+  { problem: "goblins are raiding the harvest wagons",
+    place: "the low farms", region: "The Mill-Country",
+    opposition: "a goblin warband, bolder than usual", needs: ["battle", "wilds"], danger: 2 },
+  { problem: "two lords are a week from open war over a bridge toll",
+    place: "the contested crossing at Stonebridge", region: "The Border Towns",
+    opposition: "pride, mostly, and two hundred levied spears", needs: ["words"], danger: 3 },
+  { problem: "a moneylender's ledger names half the city council",
+    place: "the counting-houses of Vael", region: "The City of Vael",
+    opposition: "people with everything to lose and guards to spend", needs: ["shadow", "words"], danger: 3 },
+  { problem: "shepherds are vanishing from the high pastures",
+    place: "the high pastures", region: "The High Valleys",
+    opposition: "tracks that start nowhere and end worse", needs: ["wilds", "lore"], danger: 4 },
+  { problem: "a wedding must be guarded from a groom's old comrades",
+    place: "a chapel in the mill-country", region: "The Mill-Country",
+    opposition: "six men the groom used to ride with", needs: ["battle", "words"], danger: 2 },
+  { problem: "a monastery's bell has been ringing for three days straight",
+    place: "the cliff monastery of St. Verren", region: "The Eastmarch",
+    opposition: "the monks won't open the gates. Or can't", needs: ["heart", "shadow"], danger: 4 },
+  { problem: "river pirates have taken the grain barges",
+    place: "the river locks", region: "The Mill-Country",
+    opposition: "pirates who know the locks better than the lockkeepers", needs: ["battle", "shadow"], danger: 3 },
+  { problem: "a scholar begs escort to copy a tomb inscription before it weathers away",
+    place: "a barrow in the Blackwood", region: "The Blackwood",
+    opposition: "the Blackwood, mostly. And whatever built the barrow", needs: ["wilds", "lore"], danger: 3 },
+  { problem: "a witch stands accused, and the town has built the pyre already",
+    place: "a square in the border towns", region: "The Border Towns",
+    opposition: "a mob that has already decided", needs: ["words", "heart"], danger: 3 },
+  { problem: "an heirloom sword must reach a dying knight before he does",
+    place: "the pass road to the high valleys", region: "The High Valleys",
+    opposition: "winter, bandits, and time", needs: ["wilds", "battle"], danger: 2 },
+  { problem: "the fishing fleet found something in their nets and won't sail",
+    place: "the eastern shore", region: "The Eastmarch",
+    opposition: "whatever is still out there under the water", needs: ["lore", "heart"], danger: 4 },
+  { problem: "a noble's son has joined a doomsday cult",
+    place: "a shuttered chapterhouse in Vael", region: "The City of Vael",
+    opposition: "believers, and the boy's own certainty", needs: ["words", "shadow"], danger: 3 },
+  { problem: "wolves have driven a village into its church",
+    place: "a snowed-in village", region: "The Blackwood",
+    opposition: "a pack that does not behave like a pack", needs: ["battle", "wilds"], danger: 3 },
+  { problem: "the dead of the last war are walking the old battlefield",
+    place: "Redfield, where the war ended", region: "The Eastmarch",
+    opposition: "soldiers who never heard the peace was signed", needs: ["lore", "heart"], danger: 5 },
+];
+
+const COMPLICATIONS = [
+  ["A storm washes out the only bridge.", "curious", "wilds"],
+  ["Refugees on the road beg the party for protection.", "cautious", "heart"],
+  ["One of the enemy turns out to be someone's kin.", "diplomatic", "words"],
+  ["A child from the village has followed them and is now underfoot.", "cautious", "heart"],
+  ["They find writing in a script none of the locals can read.", "curious", "lore"],
+  ["A rival company arrives, wanting the same prize.", "bold", "battle"],
+  ["The enemy offers to negotiate — it may be a trap.", "diplomatic", "words"],
+  ["Night falls early, and the path forks in the dark.", "cautious", "wilds"],
+  ["A wounded enemy soldier is left behind by his own side.", "diplomatic", "heart"],
+  ["Something is following them. It leaves no tracks.", "curious", "shadow"],
+  ["The local lord demands they swear to him before proceeding.", "ruthless", "words"],
+  ["A locked door stands between them and the objective.", "bold", "shadow"],
+  ["Half the party falls sick from bad water.", "cautious", "heart"],
+  ["An old shrine offers shelter — and a warning carved in stone.", "curious", "lore"],
+  ["The enemy sets a fire to smoke them out.", "bold", "battle"],
+  ["A ferryman wants triple, and he's the only ferryman.", "diplomatic", "words"],
+  ["The map is wrong. Deliberately wrong.", "curious", "wilds"],
+  ["An informant will talk, but only to someone gentle.", "cautious", "heart"],
+  ["The town watch mistakes the party for the problem.", "diplomatic", "words"],
+  ["A rockslide blocks the pass; there is a way under it.", "bold", "shadow"],
+  ["Someone in the tavern is selling the party's route to the enemy.", "ruthless", "shadow"],
+  ["A shrine-keeper offers a blessing in exchange for a truth.", "curious", "heart"],
+  ["The bridge is held by a knight sworn to challenge all comers.", "bold", "battle"],
+  ["Livestock have been slaughtered — but not eaten.", "curious", "lore"],
+  ["A deserter begs to join them; he knows the enemy camp.", "ruthless", "words"],
+  ["Fog comes down so thick the party can't see their own torches.", "cautious", "wilds"],
+  ["An old woman insists one of the party owes her family a debt.", "diplomatic", "heart"],
+  ["The enemy has taken hostages and wants an answer by dawn.", "cautious", "words"],
+  ["A courier lies dead on the road, satchel already opened.", "curious", "shadow"],
+  ["The village will only help if the party judges a dispute first.", "diplomatic", "words"],
+];
+
+const RUMOURS = [
+  "A bard swears the northern lights haven't faded in months.",
+  "The Archbishop hasn't left the cathedral in weeks.",
+  "Someone stole the Crown of Ashes. Someone else says it stole itself.",
+  "A hero came home with one arm and won't say where the other went.",
+  "Wolves in the Blackwood are hunting in silence now. No howling.",
+  "A merchant is buying up every lantern in the market. Every one.",
+  "They say the Duke's new advisor never eats in company.",
+  "A courier arrived at midnight, took one look at the Hall, and left.",
+  "Children in Marsh End are singing a rhyme no one taught them.",
+  "The old king's tomb was found open. Nothing was taken. Something was left.",
+  "Three separate travellers described the same dream. None had met.",
+  "Grain prices in Vael doubled overnight. The Guild blames the weather. The weather is fine.",
+  "A hermit walked out of the high valleys asking what year it was. He was off by forty.",
+  "The bell-founder's guild has refused a commission. They won't say whose.",
+  "Every dog in the border towns barked at moonrise, then stopped at once.",
+  "A pilgrim swears the road east is longer than it was in spring.",
+];
+
+const SHADOW_RUMOURS = [
+  ["Birds are flying west. All of them.", 15],
+  ["A trader from the Eastmarch says the dawns there come up grey, like dishwater.", 25],
+  ["Refugees from the east tell of a quiet that eats sound. They whisper, even here.", 40],
+  ["The eastern beacons went up last night. This morning, no one answers the signal-mirrors.", 55],
+  ["A rider came from the Eastmarch with white hair. He is nineteen years old.", 70],
+  ["You can see it from the Hall's tower now, on clear nights. A darkness that stands still.", 85],
+];
+
+const FLAVOUR = [
+  "A bard is quietly tuning something in the corner.",
+  "Someone lights a candle beneath a portrait and says nothing.",
+  "A knight is showing a kitchen boy how to hold a practice sword.",
+  "A courier's muddy bootprints lead to the table and back out.",
+  "The fire has been banked well. Someone here cares about this place.",
+  "Two merchants argue about the price of lamp oil, then stop, embarrassed by the quiet.",
+  "Someone has left wildflowers on the Chronicle's lectern.",
+  "The cook is teaching a hymn to the scullery girls. They keep getting the words wrong on purpose.",
+];
+
+const SAVE_KEY = "the-last-hero-save-v1";
+
+/* ================================================================ model */
+
+let heroIdCounter = 1;
+
+class Hero {
+  constructor(o) {
+    Object.assign(this, {
+      id: heroIdCounter++,
+      confidence: 0, wounded: false, alive: true, onMission: false,
+      note: null, deeds: [], bonds: [], questDone: false, isElara: false,
+    }, o);
+  }
+  get capability() { return CAPABILITY[this.cls]; }
+  card() {
+    const lines = [
+      `${this.name} — ${this.cls} (${CLASSES[this.cls]})`,
+      `${cap(this.background)}. ${this.virtue}, but ${this.vice.toLowerCase()}.`,
+      `Here ${this.motivation}. Speaks sometimes of ${this.relationship}.`,
+    ];
+    if (this.note) lines.push(this.note);
+    if (this.bonds.length) lines.push(`Close with ${this.bonds.join(" and ")}.`);
+    if (this.wounded) lines.push("Currently wounded.");
+    if (this.questDone) lines.push("Their own story is settled; they stay for yours.");
+    else if (this.confidence >= 2) lines.push("Carries themselves like someone who has come back before.");
+    return lines;
+  }
+}
+
+function makeHero(opts = {}) {
+  let vv = R.choice(VIRTUE_VICE);
+  if (opts.idealistic) vv = R.choice(IDEALIST_VV);
+  if (opts.ruthless) vv = R.choice(RUTHLESS_VV);
+  return new Hero({
+    name: R.choice(FIRST_NAMES),
+    cls: R.choice(Object.keys(CLASSES)),
+    background: R.choice(BACKGROUNDS),
+    virtue: vv[0], vice: vv[1],
+    motivation: R.choice(MOTIVATIONS),
+    relationship: R.choice(RELATIONSHIPS),
+  });
+}
+
+class Mission {
+  constructor(t) {
+    Object.assign(this, { region: null, personalFor: null, stance: null, dayOut: 0 }, t);
+    this.party = this.party || [];
+    this.items = this.items || [];
+    this.events = this.events || R.sample(COMPLICATIONS, 2);
+  }
+  title() { return cap(this.problem); }
+}
+
+/* ================================================================ game */
+
+class Game {
+  constructor() {
+    this.day = 1;
+    this.roster = [];
+    this.armory = R.sample(ITEMS, 5).map(([name, why, fx]) => ({ name, why, fx: { ...fx } }));
+    this.visitors = [];
+    this.pending = [];
+    this.active = [];
+    this.chronicle = [];
+    this.rumours = [];
+    this.adviceTally = Object.fromEntries(Object.keys(STANCES).map((k) => [k, 0]));
+    this.renown = 0;
+    this.sparedEnemies = [];
+    this.alliesWon = 0;            // spared enemies who came back
+    this.regions = REGION_DEFS.map(([name, desc]) => ({ name, desc, health: 3 }));
+    this.dread = 0;
+    this.shadowRumourIdx = 0;
+    this.omensSeen = [];
+    this.scouted = false;          // knowing the enemy: shows dread plainly
+    this.finaleOffered = false;
+    this.over = false;
+  }
+
+  /* ---------------- persistence */
+
+  save() {
+    const heroPlain = (h) => ({ ...h });
+    const missionPlain = (m) => ({
+      problem: m.problem, place: m.place, region: m.region,
+      opposition: m.opposition, needs: m.needs, danger: m.danger,
+      stance: m.stance, dayOut: m.dayOut, events: m.events,
+      personalFor: m.personalFor,
+      partyIds: m.party.map((h) => h.id),
+      items: m.items,
+    });
+    const allHeroes = new Map();
+    const collect = (h) => allHeroes.set(h.id, h);
+    this.roster.forEach(collect);
+    this.visitors.forEach(([h]) => collect(h));
+    this.pending.forEach(([h, m]) => { collect(h); m.party.forEach(collect); });
+    this.active.forEach((m) => m.party.forEach(collect));
+    const data = {
+      day: this.day, renown: this.renown, dread: this.dread,
+      adviceTally: this.adviceTally, rumours: this.rumours,
+      chronicle: this.chronicle, sparedEnemies: this.sparedEnemies,
+      alliesWon: this.alliesWon, regions: this.regions,
+      shadowRumourIdx: this.shadowRumourIdx, omensSeen: this.omensSeen,
+      scouted: this.scouted, finaleOffered: this.finaleOffered,
+      armory: this.armory,
+      heroes: [...allHeroes.values()].map(heroPlain),
+      rosterIds: this.roster.map((h) => h.id),
+      visitors: this.visitors.map(([h, m]) => ({ heroId: h.id, mission: missionPlain(m) })),
+      pending: this.pending.map(([h, m]) => ({ heroId: h.id, mission: missionPlain(m) })),
+      active: this.active.map(missionPlain),
+      heroIdCounter,
+    };
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* private mode etc. */ }
+  }
+
+  static load() {
+    let data;
+    try { data = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; }
+    if (!data || data.over) return null;
+    const g = new Game();
+    const byId = new Map();
+    heroIdCounter = data.heroIdCounter || 1;
+    for (const hp of data.heroes) {
+      const h = Object.assign(Object.create(Hero.prototype), hp);
+      byId.set(h.id, h);
+    }
+    const reviveMission = (mp) => {
+      const m = Object.assign(Object.create(Mission.prototype), mp);
+      m.party = (mp.partyIds || []).map((id) => byId.get(id)).filter(Boolean);
+      m.items = mp.items || [];
+      delete m.partyIds;
+      return m;
+    };
+    Object.assign(g, {
+      day: data.day, renown: data.renown, dread: data.dread,
+      adviceTally: data.adviceTally, rumours: data.rumours,
+      chronicle: data.chronicle, sparedEnemies: data.sparedEnemies,
+      alliesWon: data.alliesWon || 0, regions: data.regions,
+      shadowRumourIdx: data.shadowRumourIdx, omensSeen: data.omensSeen,
+      scouted: data.scouted, finaleOffered: data.finaleOffered,
+      armory: data.armory,
+      roster: data.rosterIds.map((id) => byId.get(id)).filter(Boolean),
+      visitors: data.visitors.map((v) => [byId.get(v.heroId), reviveMission(v.mission)]),
+      pending: data.pending.map((v) => [byId.get(v.heroId), reviveMission(v.mission)]),
+      active: data.active.map(reviveMission),
+    });
+    return g;
+  }
+
+  static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+
+  /* ---------------- helpers */
+
+  philosophy() {
+    const total = Object.values(this.adviceTally).reduce((a, b) => a + b, 0);
+    if (total < 3) return null;
+    let top = null;
+    for (const k of Object.keys(this.adviceTally))
+      if (top === null || this.adviceTally[k] > this.adviceTally[top]) top = k;
+    return this.adviceTally[top] > 0 ? top : null;
+  }
+
+  record(text) { this.chronicle.push([this.day, text]); }
+
+  region(name) { return this.regions.find((r) => r.name === name); }
+
+  regionWord(r) {
+    return ["fallen", "desperate", "struggling", "holding on", "steady", "thriving"][r.health];
+  }
+
+  bumpRegion(name, delta) {
+    const r = this.region(name);
+    if (!r) return;
+    const before = r.health;
+    r.health = Math.max(0, Math.min(5, r.health + delta));
+    if (r.health === 0 && before > 0) {
+      grim(`» Word comes that ${r.name} has fallen into lawlessness and dark. The Shadow drinks from places like that.`);
+      this.record(`${r.name} fell.`);
+    }
+  }
+
+  dreadWord() {
+    if (this.dread < 15) return "The east is quiet.";
+    if (this.dread < 30) return "Something is wrong in the east.";
+    if (this.dread < 50) return "The east grows dark.";
+    if (this.dread < 70) return "The Shadow gathers.";
+    if (this.dread < 90) return "The Shadow is coming.";
+    return "The Shadow is here.";
+  }
+
+  updateStatus() {
+    statusbar.style.display = "block";
+    const phil = this.philosophy();
+    statusbar.innerHTML =
+      `Day <b>${this.day}</b> · Renown <b>${this.renown}</b>` +
+      (phil ? ` · <b>${PHILOSOPHY[phil][0]}</b>` : "") +
+      ` · <span class="east">${this.scouted ? "Shadow: " + this.dread + "/100" : this.dreadWord()}</span>`;
+  }
+
+  /* ---------------- day cycle */
+
+  async newDay() {
+    this.day += 1;
+
+    // the Shadow grows
+    let growth = 2;
+    for (const r of this.regions) if (r.health === 0) growth += 1;
+    this.dread = Math.min(100, this.dread + growth);
+
+    // shadow rumours arrive on schedule
+    while (this.shadowRumourIdx < SHADOW_RUMOURS.length &&
+           this.dread >= SHADOW_RUMOURS[this.shadowRumourIdx][1]) {
+      this.rumours.push(SHADOW_RUMOURS[this.shadowRumourIdx][0]);
+      this.shadowRumourIdx += 1;
+    }
+    if (R.random() < 0.7) {
+      const r = R.choice(RUMOURS);
+      if (!this.rumours.includes(r)) this.rumours.push(r);
+    }
+    this.rumours = this.rumours.slice(-5);
+
+    // healing
+    for (const h of this.roster) {
+      if (h.wounded && !h.onMission && R.random() < 0.4) {
+        h.wounded = false;
+        note(`» ${h.name} is back on their feet.`);
+      }
+    }
+
+    // visitors
+    if (R.random() < 0.65 && this.visitors.length < 2) this.arriveVisitor();
+
+    // spared enemies return
+    if (this.sparedEnemies.length && R.random() < 0.3) {
+      const name = this.sparedEnemies.shift();
+      const h = makeHero();
+      h.name = name;
+      h.note = "You spared them once. They have not forgotten.";
+      this.roster.push(h);
+      this.alliesWon += 1;
+      note(`» ${name} — the enemy your heroes once spared — stands at the door, asking to serve. You find you have already decided.`);
+      this.record(`${name}, once an enemy, joined the Hall.`);
+    }
+
+    // personal quests surface
+    this.maybePersonalQuest();
+
+    // regions decay slowly if the Shadow is strong
+    if (this.dread >= 50 && R.random() < 0.35) {
+      const r = R.choice(this.regions.filter((x) => x.health > 0));
+      if (r) {
+        this.bumpRegion(r.name, -1);
+        if (r.health > 0) omen(`» Travellers say ${r.name} is ${this.regionWord(r)} now. The roads feel longer.`);
+      }
+    }
+
+    // omens
+    await this.maybeOmen();
+
+    // missions advance
+    for (const m of [...this.active]) await this.advanceMission(m);
+
+    // forced finale
+    if (this.dread >= 100 && !this.over) {
+      await this.finale(true);
+      return;
+    }
+    this.save();
+  }
+
+  maybePersonalQuest() {
+    const candidates = this.roster.filter(
+      (h) => h.alive && !h.onMission && !h.questDone && h.confidence >= 2 && !h.wounded);
+    if (!candidates.length || R.random() > 0.35) return;
+    if (this.pending.some(([, m]) => m.personalFor) ||
+        this.visitors.some(([, m]) => m.personalFor) ||
+        this.active.some((m) => m.personalFor)) return;
+    const h = R.choice(candidates);
+    const region = R.choice(this.regions.filter((r) => r.health > 0)) || this.regions[0];
+    const m = new Mission({
+      problem: `${h.name}'s own matter — ${h.motivation.replace(/^to /, "the need to ")} — has found them at last`,
+      place: `the road where ${h.relationship} waits`, region: region.name,
+      opposition: "the past, which does not negotiate",
+      needs: [h.capability, "heart"], danger: 3,
+      personalFor: h.id,
+    });
+    m.party.push(h);
+    h.onMission = true;
+    this.pending.push([h, m]);
+    note(`» ${h.name} finds you by the fire. "I came here ${h.motivation}. It's time. Will you help me finish it?" (Council Table — the mission is prepared like any other. Only it isn't.)`);
+  }
+
+  async maybeOmen() {
+    const thresholds = [
+      [20, "A monk arrives from the east, barefoot, his order's seal burned into a strip of leather. He says his monastery no longer has mornings — just a lightening of the dark. He asks for nothing. He only wanted someone outside the Eastmarch to know."],
+      [45, "Refugees reach the Hall gates at dusk — forty of them, quiet in a way crowds never are. A little girl among them draws the same picture over and over: a door, standing open in a field, and something long coming through it."],
+      [70, "An old soldier you once turned away — or perhaps never met — rides in without dismounting. \"Whatever you're going to do,\" he says, \"the east can't wait for you to be ready.\" He leaves his sword on the step and rides west."],
+    ];
+    for (const [t, text] of thresholds) {
+      if (this.dread >= t && !this.omensSeen.includes(t)) {
+        this.omensSeen.push(t);
+        header("An Omen");
+        omen(text);
+        const act = await choose("What do you do with this?", [
+          ["Send scouts east — you need to know what you face", "scout"],
+          ["Double the watch and keep the Hall's work going", "steady"],
+          ["Ask the Library to search the old accounts for anything like this", "study"],
+        ]);
+        if (act === "scout") {
+          this.scouted = true;
+          note("Your scouts will keep a tally of the dark from now on. Knowledge is a cold comfort, but it is a comfort.");
+          this.record("Scouts were sent east. What they report is not written here.");
+        } else if (act === "steady") {
+          this.renown += 1;
+          note("The Hall does not flinch. People notice. Renown grows.");
+          this.record("The Hall stood steady while the east darkened.");
+        } else {
+          this.dread = Math.max(0, this.dread - 4);
+          note("The librarian finds a pattern in the old accounts — and a mistake the last age made. You will not repeat it. The dark's advance loses a step.");
+          this.record("The Library found the old age's mistake in time to avoid it.");
+        }
+        await pause();
+      }
+    }
+  }
+
+  arriveElara() {
+    const h = new Hero({
+      name: "Elara", cls: "Ranger", background: "hunter's daughter",
+      virtue: "Brave", vice: "Inexperienced",
+      motivation: "to find her missing father",
+      relationship: "a father lost in the Blackwood",
+      isElara: true,
+    });
+    h.note = "Nineteen. Worn bow, hunting knife, travel cloak. Her hands are steady; her voice is not.";
+    const m = new Mission({
+      problem: "a hunter is missing in the Blackwood",
+      place: "the Blackwood", region: "The Blackwood",
+      opposition: "wolves, and worse things that wear the dark",
+      needs: ["wilds", "battle"], danger: 3,
+    });
+    this.visitors.push([h, m]);
+    header("A Visitor");
+    say("A young ranger stands in the entrance, rain still on her shoulders.");
+    quote('"People say you once crossed the Blackwood alive. My father went in nine days ago. I need to know if I should follow the same trail."');
+    say("(Find her at the Council Table.)");
+  }
+
+  arriveVisitor() {
+    const phil = this.philosophy();
+    const h = makeHero({
+      idealistic: phil === "cautious" || phil === "diplomatic",
+      ruthless: phil === "ruthless",
+    });
+    // troubled regions generate their own problems
+    const troubled = this.regions.filter((r) => r.health <= 1 && r.health > 0);
+    let t;
+    if (troubled.length && R.random() < 0.5) {
+      const r = R.choice(troubled);
+      const pool = MISSION_TEMPLATES.filter((x) => x.region === r.name);
+      t = pool.length ? R.choice(pool) : R.choice(MISSION_TEMPLATES);
+    } else {
+      t = R.choice(MISSION_TEMPLATES);
+    }
+    const m = new Mission({ ...t });
+    const reg = this.region(m.region);
+    if (reg && reg.health <= 1) m.danger += 1;
+    this.visitors.push([h, m]);
+    note(`» ${h.name}, a ${h.cls.toLowerCase()}, arrives at the Hall. Word is that ${m.problem}. (Council Table.)`);
+  }
+
+  /* ---------------- mission mechanics */
+
+  partyScore(m) {
+    let score = 0;
+    for (const h of m.party) {
+      if (m.needs.includes(h.capability)) score += 2;
+      score += Math.min(h.confidence, 2);
+      if (h.wounded) score -= 1;
+    }
+    // bonds: pairs who trust each other work better
+    for (const h of m.party)
+      if (m.party.some((x) => x !== h && h.bonds.includes(x.name))) { score += 1; break; }
+    for (const it of m.items)
+      for (const [k, v] of Object.entries(it.fx)) {
+        if (k === "single_use" || k === "dawn") continue;
+        if (m.needs.includes(k)) score += v;
+      }
+    return score;
+  }
+
+  async advanceMission(m) {
+    m.dayOut += 1;
+    const names = m.party.map((h) => h.name).join(", ");
+    if (m.dayOut <= m.events.length) {
+      const [text, bestStance, helpful] = m.events[m.dayOut - 1];
+      header(`Word From the Road — day ${m.dayOut}`);
+      say(`(${names} — ${m.place})`);
+      say(text);
+      quote(this.resolveEvent(m, bestStance, helpful));
+      await pause();
+    } else {
+      await this.resolveMission(m);
+    }
+  }
+
+  resolveEvent(m, bestStance, helpful) {
+    const roll = R.randint(1, 6);
+    let bonus = 0;
+    const actor = R.choice(m.party);
+    const notes = [];
+    if (m.stance === bestStance) {
+      bonus += 2;
+      notes.push(`They remember your advice — ${STANCES[m.stance][1].split(".")[0].toLowerCase()}.`);
+    }
+    const helper = m.party.find((h) => h.capability === helpful);
+    if (helper) {
+      bonus += 2;
+      notes.push(`${helper.name} ${CLASSES[helper.cls]}, and it shows.`);
+    }
+    for (const it of m.items)
+      if ((it.fx[helpful] || 0) > 0) { bonus += 1; notes.push(`${it.name} earns its keep.`); break; }
+    if (m.party.some((h) => m.party.some((x) => x !== h && h.bonds.includes(x.name))))
+      bonus += 1;
+    if (R.random() < 0.35) {
+      if (roll + bonus >= 5) notes.push(`${actor.name}'s ${actor.virtue.toLowerCase()} streak carries the moment.`);
+      else notes.push(`${actor.name} is ${actor.vice.toLowerCase()}, and it costs them time.`);
+    }
+    if (roll + bonus >= 5) {
+      m.danger -= 1;
+      notes.push("They come through the better for it.");
+    } else if (roll + bonus <= 2) {
+      m.danger += 1;
+      actor.wounded = true;
+      notes.push(`It goes badly. ${actor.name} is hurt.`);
+    } else {
+      notes.push("They manage — barely, and it costs them a day's strength.");
+    }
+    return notes.join(" ");
+  }
+
+  async resolveMission(m) {
+    header("The Return");
+    const names = m.party.map((h) => h.name).join(", ");
+    let score = this.partyScore(m) + R.randint(1, 6) - m.danger;
+    if (m.stance === "bold") score += 1;
+    for (const h of m.party) h.onMission = false;
+    this.active = this.active.filter((x) => x !== m);
+    for (const it of m.items) {
+      if (it.fx.single_use) say(`(${it.name} was spent on the road.)`);
+      else this.armory.push(it);
+    }
+    if (score >= 4) this.missionTriumph(m, names);
+    else if (score >= 1) this.missionCostly(m, names);
+    else if (score >= -2) this.missionFailForward(m, names);
+    else this.missionDisaster(m, names);
+    this.maybeBond(m);
+    await pause();
+  }
+
+  maybeBond(m) {
+    const alive = m.party.filter((h) => h.alive);
+    if (alive.length < 2 || R.random() > 0.4) return;
+    const [a, b] = R.sample(alive, 2);
+    if (a.bonds.includes(b.name)) return;
+    a.bonds.push(b.name);
+    b.bonds.push(a.name);
+    note(`» Something on that road knit ${a.name} and ${b.name} together. They sit near each other at meals now, not talking much. They don't need to.`);
+    this.record(`${a.name} and ${b.name} became fast companions.`);
+  }
+
+  missionTriumph(m, names) {
+    say(`${names} return through the Hall doors to cheering.`);
+    say(`The matter of ${m.problem} is settled, and settled well.`);
+    this.renown += 2;
+    this.bumpRegion(m.region, 1);
+    if (m.region === "The Eastmarch") {
+      this.dread = Math.max(0, this.dread - 8);
+      omen("And in the east, for a night at least, the dark loses ground.");
+    }
+    for (const h of m.party) { h.confidence += 1; h.deeds.push(m.title()); }
+    if (m.personalFor) {
+      const h = m.party.find((x) => x.id === m.personalFor);
+      if (h) {
+        h.questDone = true;
+        h.confidence += 1;
+        h.note = `Settled the matter that brought them here. What's left is choice, not need.`;
+        note(`» ${h.name} came here ${h.motivation}. That story is finished now — and still, they stay. That is a different kind of loyalty.`);
+        this.record(`${h.name} settled their own matter and chose to remain.`);
+      }
+    }
+    this.record(`${names} resolved this: ${m.problem}. The Hall's name grew.`);
+    if ((m.stance === "diplomatic" || m.stance === "cautious") && R.random() < 0.6) {
+      const name = R.choice(FIRST_NAMES);
+      quote(`One of them clears their throat. "We spared their leader. ${name}, they were called. Watch the roads — I think we'll meet them again."`);
+      this.sparedEnemies.push(name);
+    } else if (R.random() < 0.4) {
+      const r = makeHero();
+      r.note = `Followed ${m.party[0].name} home after ${m.place}.`;
+      this.roster.push(r);
+      quote(`Someone else stands behind them in the doorway. "This is ${r.name}. They want to become a hero." Another judgment to make.`);
+    }
+  }
+
+  missionCostly(m, names) {
+    say(`${names} return quiet and mud-spattered.`);
+    say(`The matter of ${m.problem} is settled — but not cleanly, and not for free.`);
+    this.renown += 1;
+    const h = R.choice(m.party);
+    h.wounded = true;
+    h.confidence += 1;
+    grim(`${h.name} took the worst of it and will need time to mend.`);
+    if (m.personalFor) {
+      const p = m.party.find((x) => x.id === m.personalFor);
+      if (p) {
+        p.questDone = true;
+        p.note = "Their own matter is settled — at a price they don't discuss.";
+        this.record(`${p.name} settled their own matter, at a price.`);
+      }
+    }
+    if (m.region === "The Eastmarch") this.dread = Math.max(0, this.dread - 4);
+    this.record(`${names} settled this at a price: ${m.problem}. ${h.name} was wounded.`);
+  }
+
+  missionFailForward(m, names) {
+    say(`${names} return without what they went for.`);
+    grim(`The matter of ${m.problem} stands unresolved — and it is growing.`);
+    this.bumpRegion(m.region, -1);
+    if (m.personalFor) {
+      const p = m.party.find((x) => x.id === m.personalFor);
+      if (p) {
+        p.questDone = true;
+        p.confidence = Math.max(0, p.confidence - 1);
+        p.note = "Went to settle their own matter and came back without an ending. Some doors close on their own.";
+        grim(`${p.name} does not talk about what they found on that road. Or didn't.`);
+        this.record(`${p.name}'s own matter ended without an answer.`);
+        return;
+      }
+    }
+    const follow = new Mission({
+      problem: m.problem + " — worse now, and bolder",
+      place: m.place, region: m.region,
+      opposition: m.opposition,
+      needs: m.needs, danger: m.danger + 1,
+    });
+    const carrier = makeHero();
+    carrier.note = `Came from ${m.place} with the bad news.`;
+    this.visitors.push([carrier, follow]);
+    this.rumours.push(`They say things in ${m.place} are worse since the Hall failed there.`);
+    this.record(`${names} failed at this: ${m.problem}. The failure did not stay quiet.`);
+    note(`» Word travels. Someone new arrives from ${m.place} within the hour, and the problem they carry is heavier than the last.`);
+  }
+
+  missionDisaster(m, names) {
+    grim(`Of the party sent to ${m.place}, this is what returns:`);
+    const dead = R.choice(m.party);
+    dead.alive = false;
+    this.roster = this.roster.filter((h) => h.alive);
+    for (const h of this.roster)
+      h.bonds = h.bonds.map((n) => (n === dead.name ? `${dead.name} (gone)` : n));
+    const survivors = m.party.filter((h) => h.alive);
+    for (const h of survivors) h.wounded = true;
+    if (survivors.length)
+      li(survivors.map((h) => h.name).join(", ") + ` — wounded, and carrying ${dead.name}'s effects.`);
+    else li("No one.");
+    grim(`${dead.name} — ${dead.background}, who came here ${dead.motivation} — will not come home. Somewhere, ${dead.relationship} waits for a letter that now falls to you to write.`);
+    this.renown -= 1;
+    this.bumpRegion(m.region, -1);
+    this.record(`${dead.name} died at ${m.place}. The problem — ${m.problem} — remains.`);
+    this.rumours.push(`A candle burns beneath ${dead.name}'s portrait in the Hall.`);
+    const mourner = survivors.find((h) => h.bonds.some((n) => n.startsWith(dead.name)));
+    if (mourner)
+      grim(`${mourner.name} carries it worst. They were close. The Hall gives them room.`);
+  }
+
+  /* ---------------- rooms */
+
+  async councilTable() {
+    header("The Council Table");
+    const opts = [];
+    this.visitors.forEach(([h, m], i) =>
+      opts.push([`Speak with ${h.name} (${m.title().toLowerCase()})`, ["visitor", i]]));
+    this.pending.forEach(([h, m], i) =>
+      opts.push([(m.personalFor ? `Help ${h.name} settle their own matter` : `Prepare the mission: ${m.title().toLowerCase()}`), ["prepare", i]]));
+    if (this.dread >= 70 || this.day >= 30) {
+      opts.push(["March east. End this — or be ended.", ["finale", null], "dark"]);
+    }
+    if (!opts.length) {
+      say("The table is empty. Maps, candle stubs, old wine rings. Someone will come — someone always comes.");
+      return;
+    }
+    opts.push(["Step away", ["back", null]]);
+    const [kind, idx] = await choose("Who has your attention?", opts);
+    if (kind === "visitor") await this.talkToVisitor(idx);
+    else if (kind === "prepare") await this.prepareMission(idx);
+    else if (kind === "finale") await this.finale(false);
+  }
+
+  async talkToVisitor(idx) {
+    const [h, m] = this.visitors[idx];
+    header(h.name);
+    for (const line of h.card()) say(line);
+    const reg = this.region(m.region);
+    say(`The problem: ${m.problem}, out at ${m.place}. Opposition, as far as anyone knows: ${m.opposition}.`);
+    if (reg) say(`That's ${reg.name} — ${this.regionWord(reg)}, by most accounts.`);
+    say("Difficulty: unknown. (The Library may know more.)");
+    const action = await choose(
+      "Three questions sit behind your eyes — can you trust them, can they succeed, what will they become. What do you do?", [
+      ["Take on the mission (they'll join the party)", "accept"],
+      ["Take them into the Hall, but hold the mission for now", "recruit"],
+      ["Turn them away", "reject"],
+      ["Decide later", "later"],
+    ]);
+    if (action === "accept") {
+      this.visitors.splice(idx, 1);
+      this.roster.push(h);
+      m.party.push(h);
+      h.onMission = true;
+      this.pending.push([h, m]);
+      say(`${h.name} exhales. You will make preparations at the Council Table.`);
+    } else if (action === "recruit") {
+      this.visitors.splice(idx, 1);
+      this.roster.push(h);
+      this.record(`${h.name} joined the Hall, their errand set aside.`);
+      say(`${h.name} joins the Hall. The problem at ${m.place} waits — problems left waiting rarely shrink.`);
+      this.bumpRegion(m.region, -1);
+      this.rumours.push(`Things at ${m.place} are said to be getting worse.`);
+    } else if (action === "reject") {
+      this.visitors.splice(idx, 1);
+      this.record(`You turned ${h.name} away. Their problem went with them.`);
+      say(`${h.name} nods once, as if they expected it, and goes back out into the weather. You do not learn how it ends.`);
+      this.bumpRegion(m.region, -1);
+    }
+    this.save();
+  }
+
+  async prepareMission(idx) {
+    const [, m] = this.pending[idx];
+    header(`Preparation — ${m.title()}`);
+    const available = this.roster.filter(
+      (h) => !h.onMission && h.alive && !m.party.includes(h));
+    while (m.party.length < 3 && available.length) {
+      const opts = available.map((h) => [
+        `${h.name} the ${h.cls} — ${h.virtue}/${h.vice}`
+        + (h.wounded ? " (wounded)" : "")
+        + (m.party.some((p) => p.bonds.includes(h.name)) ? " (bonded with the party)" : ""), h]);
+      opts.push(["Send no one else", null]);
+      const pick = await choose(
+        `Party so far: ${m.party.map((x) => x.name).join(", ")}. Add a companion?`, opts);
+      if (!pick) break;
+      m.party.push(pick);
+      available.splice(available.indexOf(pick), 1);
+    }
+    if (this.armory.length) {
+      const opts = this.armory.map((it) => [`${it.name} — ${it.why}`, it]);
+      opts.push(["Keep your supplies; another hero may need them tomorrow", null]);
+      const it = await choose("From the Armory, you may lend one thing.", opts);
+      if (it) {
+        this.armory.splice(this.armory.indexOf(it), 1);
+        m.items.push(it);
+        say(`${m.party[0].name} takes ${it.name} with both hands.`);
+      }
+    }
+    say("They shoulder their packs. At the door, they stop and look back. One question remains — the one that matters.");
+    const stance = await choose('"What do you tell them before they leave?"',
+      Object.keys(STANCES).map((k) => [`"${STANCES[k][1]}"  (${STANCES[k][0]})`, k]));
+    m.stance = stance;
+    this.adviceTally[stance] += 1;
+    for (const h of m.party) h.onMission = true;
+    this.pending.splice(idx, 1);
+    this.active.push(m);
+    const names = m.party.map((h) => h.name).join(", ");
+    say(`${names} walk out under a low sky, toward ${m.place}. The Hall is quieter for it.`);
+    this.record(`${names} set out: ${m.problem}. Your advice: ${STANCES[stance][0].toLowerCase()}.`);
+    const phil = this.philosophy();
+    if (phil && this.adviceTally[phil] === 3) {
+      const [name, desc] = PHILOSOPHY[phil];
+      note(`» The world has begun describing you. They call you ${name}. ${desc}`);
+      this.record(`Word spread of the Hall's master: ${name}.`);
+    }
+    this.save();
+  }
+
+  armoryRoom() {
+    header("The Armory");
+    if (!this.armory.length) {
+      say("Empty racks. Everything you own is out in the world, doing work.");
+      return;
+    }
+    say("Every item here is memorable for one reason:");
+    for (const it of this.armory) {
+      li(`• ${it.name} — ${it.why}` + (it.fx.dawn ? " (it hates the dark, and the dark knows it)" : ""));
+    }
+  }
+
+  async library() {
+    header("The Library");
+    quote('The librarian looks up over her spectacles. "Ask."');
+    const subjects = [];
+    for (const [, m] of [...this.visitors, ...this.pending])
+      subjects.push([`About ${m.place} (${m.title().toLowerCase()})`, m]);
+    for (const m of this.active) subjects.push([`About the party at ${m.place}`, m]);
+    subjects.push(["About the east. About the Shadow.", "shadow", "dark"]);
+    subjects.push(["Nothing today", null]);
+    const m = await choose("What do you ask about?", subjects);
+    if (!m) { quote('"Then stop letting the door swing."'); return; }
+    if (m === "shadow") {
+      quote('She is quiet for a long moment. Then she clears a table and lays out three books you have never seen her touch.');
+      quote('"It has come before. The accounts disagree on everything except this: it was not beaten by armies. It was beaten by people who walked in with the dawn behind them — heroes it could not make afraid, carrying things it could not make dark, led by someone whose name meant something."');
+      li("Heroes with settled hearts weigh most — the confident, the bonded, the ones whose own stories are finished.");
+      li("Certain relics matter in the dark. She taps the Armory wall, twice.");
+      li("Allies you made of enemies count double. The Shadow does not understand mercy. It never has.");
+      if (this.dread >= 70) quote('"And it is close now. You know that, don\'t you."');
+      return;
+    }
+    const needsWords = {
+      battle: "steel", wilds: "someone who knows the land",
+      lore: "someone who can read the old things",
+      heart: "a gentle hand", shadow: "a quiet one", words: "a talker",
+    };
+    const hints = m.needs.map((n) => needsWords[n]);
+    quote(`She pulls down a ledger. "${cap(m.place)}. Yes. What that business wants is ${hints.join(" and ")}."`);
+    if (m.danger >= 4) quote('"And I\'ll say this once: people who go there unprepared don\'t come back to complain about it."');
+    else if (m.danger <= 2) quote('"Honestly? Half the danger there is rumour. The other half still bites."');
+    else quote('"Dangerous enough. Not hopeless. Like most things."');
+  }
+
+  mapTable() {
+    header("The Map Table");
+    say("Six regions, pinned corners, wax stains. Someone keeps this current.");
+    for (const r of this.regions) {
+      const line = `${r.name} — ${this.regionWord(r)}. (${r.desc})`;
+      if (r.health === 0) grim("• " + line);
+      else if (r.health <= 2) el("li", "• " + line).style.color = "var(--danger)";
+      else li("• " + line);
+    }
+    omen(this.scouted ? `The east: your scouts mark the dark at ${this.dread} of 100.` : `The east: ${this.dreadWord().toLowerCase()}`);
+  }
+
+  dormitory() {
+    header("The Dormitory");
+    if (!this.roster.length) {
+      say("Rows of empty beds, blankets folded. Waiting.");
+      return;
+    }
+    for (const h of this.roster) {
+      const lines = h.card();
+      say(lines[0] + (h.onMission ? " (away)" : ""));
+      for (const l of lines.slice(1)) li(l);
+    }
+  }
+
+  chronicleRoom() {
+    header("The Chronicle");
+    if (!this.chronicle.length) {
+      say("The great book lies open at a blank page. The first story is yours to cause.");
+      return;
+    }
+    for (const [day, text] of this.chronicle.slice(-14)) li(`Day ${day}. ${text}`);
+    const phil = this.philosophy();
+    if (phil) say(`The chronicler has titled this volume: '${PHILOSOPHY[phil][0]}'.`);
+  }
+
+  entrance() {
+    this.updateStatus();
+    header(`The Hall — Day ${this.day}`);
+    say(R.choice(FLAVOUR));
+    if (this.dread >= 30 && R.random() < 0.5)
+      omen(R.choice([
+        "Conversations near the east windows trail off, these days.",
+        "The fire burns fine. Everyone still sits closer to it than they used to.",
+        "A new habit in the Hall: people touch the door-post when they leave. For luck.",
+      ]));
+    if (this.rumours.length) {
+      say("Heard around the Hall:");
+      for (const r of this.rumours) li(`• "${r}"`);
+    }
+    if (this.visitors.length)
+      say(`Waiting at the Council Table: ${this.visitors.map(([h]) => h.name).join(", ")}.`);
+    if (this.active.length)
+      say(`Out on the roads: ${this.active.length} ${this.active.length === 1 ? "party" : "parties"}.`);
+  }
+
+  /* ---------------- the finale */
+
+  finaleStrength(party, items) {
+    let s = 0;
+    for (const h of party) {
+      s += 1 + Math.min(h.confidence, 3);
+      if (h.questDone) s += 2;
+      if (party.some((x) => x !== h && h.bonds.includes(x.name))) s += 1;
+      if (h.wounded) s -= 1;
+    }
+    const caps = new Set(party.map((h) => h.capability));
+    s += caps.size;                                        // breadth of capability
+    for (const it of items) if (it.fx.dawn) s += 2;
+    s += this.alliesWon * 2;                               // mercy counts double
+    s += Math.floor(this.renown / 3);
+    s += Math.floor(this.regions.reduce((a, r) => a + r.health, 0) / 6); // a healthy land fights back
+    const phil = this.philosophy();
+    if (phil === "cautious" || phil === "diplomatic") s += 1;
+    if (phil === "curious") s += 1;
+    return s;
+  }
+
+  async finale(forced) {
+    this.finaleOffered = true;
+    header("The Last Mission");
+    if (forced) {
+      grim("You waited, and the waiting is over. The Shadow has crossed out of the Eastmarch. There is no more east to lose. The Hall empties itself onto the road because there is nothing else left to do.");
+    } else {
+      say("You have decided. The Hall goes east — not to hold a line, but to end the thing that draws it.");
+    }
+    const available = this.roster.filter((h) => h.alive && !h.onMission && !h.wounded);
+    const anyHero = this.roster.filter((h) => h.alive && !h.onMission);
+    let pool = available.length ? available : anyHero;
+    const party = [];
+    if (!pool.length) {
+      grim("And here is the bitter arithmetic: there is no one left to send. The Hall's beds are empty, its portraits many, its dormitory quiet.");
+    } else {
+      say("Choose who walks into the dark. Choose well; there is no second march.");
+      while (party.length < 4 && pool.length) {
+        const opts = pool.map((h) => [
+          `${h.name} the ${h.cls} — ${h.virtue}/${h.vice}`
+          + (h.questDone ? " (settled heart)" : "")
+          + (h.wounded ? " (wounded)" : "")
+          + (party.some((p) => p.bonds.includes(h.name)) ? " (bonded)" : ""), h]);
+        if (party.length >= 1) opts.push(["The party is chosen", null]);
+        const pick = await choose(
+          party.length ? `Marching: ${party.map((x) => x.name).join(", ")}. Who else?` : "Who leads?", opts);
+        if (!pick) break;
+        party.push(pick);
+        pool = pool.filter((h) => h !== pick);
+      }
+    }
+    const items = [];
+    let armory = [...this.armory];
+    while (items.length < 2 && armory.length) {
+      const opts = armory.map((it) => [
+        `${it.name} — ${it.why}` + (it.fx.dawn ? " ✦" : ""), it]);
+      opts.push([items.length ? "Enough. Weight slows the living." : "They carry nothing but themselves", null]);
+      const it = await choose("What do they carry into the dark? (choose up to two)", opts);
+      if (!it) break;
+      items.push(it);
+      armory = armory.filter((x) => x !== it);
+    }
+    let stance = null;
+    if (party.length) {
+      say("At the east gate, they stop. Every campaign you have run has come down to this habit, this small ritual, this one question.");
+      stance = await choose('"What do you tell them before they leave?"',
+        Object.keys(STANCES).map((k) => [`"${STANCES[k][1]}"  (${STANCES[k][0]})`, k]));
+      this.adviceTally[stance] += 1;
+    }
+    await pause();
+
+    let strength = this.finaleStrength(party, items);
+    if (forced) strength -= 2;
+
+    // Act 1 — the road east
+    header("The Road East");
+    say("The land changes a day out. Colour goes first, then birdsong, then the feeling that roads lead anywhere. The party walks through villages where doors stand open and kettles sit cold.");
+    if (party.length) {
+      const guide = party.find((h) => h.capability === "wilds");
+      if (guide) { strength += 1; say(`${guide.name} keeps them to the old paths, the ones the dark hasn't learned yet.`); }
+      if (stance === "cautious") { strength += 1; say("They go carefully, and carefulness is a lantern of its own out here."); }
+      if (stance === "bold") say("They go fast. Speed is a kind of courage, and courage is being watched.");
+    }
+    await pause();
+
+    // Act 2 — the door in the field
+    header("The Door in the Field");
+    say("It is exactly what the refugee girl drew: a door, standing open in a field, and the long dark coming through it like water finding a crack.");
+    if (party.length) {
+      const reader = party.find((h) => h.capability === "lore");
+      if (reader) {
+        strength += 2;
+        say(`${reader.name} reads the doorframe aloud — the old age's mistake, carved as a warning by whoever survived it. Now you will not repeat it.`);
+      } else {
+        say("There is writing on the doorframe. No one in the party can read it. They will have to do this the hard way.");
+      }
+      if (this.alliesWon > 0)
+        note(`And out of the grey come ${this.alliesWon === 1 ? "an ally" : this.alliesWon + " allies"} you never planned for — enemies your heroes once spared, standing now where it counts. The Shadow does not understand mercy. It is about to be beaten by it.`);
+    }
+    await pause();
+
+    // Act 3 — the last hero
+    header("The Last Hero");
+    const roll = R.randint(1, 6);
+    const total = strength + roll;
+    const leader = party[0];
+    let tier;
+    if (!party.length) tier = "night";
+    else if (total >= 22) tier = "dawn";
+    else if (total >= 15) tier = "hardwon";
+    else if (total >= 9) tier = "pyrrhic";
+    else tier = "night";
+
+    if (tier !== "night") {
+      say(`${leader.name} walks last through the door, ${items.length ? items.map((i) => i.name).join(" and ") + " in hand" : "empty-handed and unbowed"}. What happens on the other side, the Chronicle can only guess at; no account of it agrees with any other.`);
+      if (tier === "dawn" && party.length > 1)
+        say("What is agreed: they all walked back out. All of them. Into a sunrise that came up gold for the first time in a season.");
+    }
+    await pause();
+
+    // Epilogue
+    header("Epilogue");
+    const phil = this.philosophy();
+    const title = phil ? PHILOSOPHY[phil][0] : "the keeper of the Hall";
+    if (tier === "dawn") {
+      note("THE DAWN COMES.");
+      say(`The door is shut, and the land remembers how to have mornings. In the years after, the Eastmarch is resettled by people who plant lantern-trees at their gates — a custom no one explains and everyone keeps.`);
+      say(`The Chronicle's last page names every hero who marched, and closes with a line about you, ${title}: "They asked the right questions of the right people, and then — this mattered more — they let them answer."`);
+      this.record("The Shadow was ended. The dawn came up gold.");
+    } else if (tier === "hardwon") {
+      note("A HARD-WON DAWN.");
+      const lost = party.length > 1 ? R.choice(party.slice(1)) : null;
+      if (lost) {
+        lost.alive = false;
+        grim(`The door is shut. The price is written in one empty chair at the Hall's long table: ${lost.name}, who came here ${lost.motivation}, and finished someone else's story instead.`);
+        this.record(`The Shadow was ended. ${lost.name} did not come home.`);
+      } else {
+        say("The door is shut, at a cost the survivors carry quietly.");
+        this.record("The Shadow was ended, at cost.");
+      }
+      say(`The east heals slowly, the way people do. The Chronicle calls you ${title}, and the bards get most of it wrong, and the ones who were there let them.`);
+    } else if (tier === "pyrrhic") {
+      grim("THE LONG GREY.");
+      say("The door is not shut. It is narrowed — wedged with courage and paid for in names the Chronicle takes three pages to list. The Shadow is not ended; it is taught, for the first time, to be patient.");
+      say(`The Hall stands. The watch continues. Somewhere a new ranger, nineteen and rain-soaked, is walking toward your gate to ask if the trail is safe. You will lie to her less than most would, ${title}. It is what you have instead of victory.`);
+      this.record("The Shadow was held — not beaten. The watch continues.");
+    } else {
+      grim("THE LONG NIGHT.");
+      say("There are histories of what happened next, but they are written in other lands, by people who heard it third-hand: that the east went out like a lamp, and then the border towns, and that the last light anyone reported was a single hall on a hill, its windows lit, its doors open, taking people in until the dark reached the step.");
+      say(`No Chronicle of yours survives. But this much is carried out by the refugees, retold until it hardens into legend: the Hall never closed. Whatever else is said of you, ${title} — it never closed.`);
+      this.record("The night came. The Hall's doors stayed open to the last.");
+    }
+    await pause();
+
+    header("The Chronicle Closes");
+    say(`${this.chronicle.length} entries, ${this.day} days, ${this.roster.filter((h) => h.alive).length + party.filter((h) => h.alive && !this.roster.includes(h)).length} heroes still living.`);
+    say("It records, in part:");
+    for (const [day, text] of this.chronicle.slice(-8)) li(`Day ${day}. ${text}`);
+    this.over = true;
+    Game.clearSave();
+    await choose("", [["Begin a new campaign", "again"]]);
+    location.reload();
+  }
+
+  /* ---------------- main loop */
+
+  async run(isNew) {
+    if (isNew) {
+      say("You are the master of a modest Hall. Heroes will come to you with problems. You will judge them, equip them, and — most importantly — advise them. Then they will walk out the door, and the story will happen without you.");
+      omen("One more thing, which you do not know yet: far to the east, something old has begun to wake. You have perhaps a season. Spend it on people. It will turn out — though no one will believe this until the end — that people were the only preparation that counted.");
+      await pause();
+      this.arriveElara();
+    } else {
+      say("The Hall again. The fire kept in, the Chronicle where you left it.");
+      note(`(Campaign restored — day ${this.day}.)`);
+    }
+    while (!this.over) {
+      this.entrance();
+      const action = await choose("Where do you go?", [
+        ["Council Table", "council"],
+        ["Map Table", "map"],
+        ["Armory", "armory"],
+        ["Library", "library"],
+        ["Dormitory", "dorm"],
+        ["Chronicle", "chronicle"],
+        ["Retire for the night (next day)", "sleep"],
+      ]);
+      if (action === "council") await this.councilTable();
+      else if (action === "map") this.mapTable();
+      else if (action === "armory") this.armoryRoom();
+      else if (action === "library") await this.library();
+      else if (action === "dorm") this.dormitory();
+      else if (action === "chronicle") this.chronicleRoom();
+      else if (action === "sleep") {
+        hr();
+        say("Night. The Hall settles around its fires.");
+        await this.newDay();
+      }
+    }
+  }
+}
+
+/* ================================================================ boot */
+
+async function boot() {
+  const saved = Game.load();
+  if (saved) {
+    const pick = await choose(`A campaign is in progress (day ${saved.day}).`, [
+      ["Continue the campaign", "continue"],
+      ["Start over (erases the saved campaign)", "new", "dark"],
+    ]);
+    if (pick === "continue") {
+      await saved.run(false);
+      return;
+    }
+    Game.clearSave();
+  }
+  const g = new Game();
+  g.save();
+  await g.run(true);
+}
+
+boot();
+</script>
+</body>
+</html>
