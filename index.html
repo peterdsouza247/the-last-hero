@@ -29,7 +29,19 @@
     line-height: 1.65;
     text-rendering: optimizeLegibility;
   }
-  #frame { max-width: 700px; margin: 0 auto; padding: 20px 22px 40vh; }
+  #frame { max-width: 700px; margin: 0 auto; padding: 20px 22px 40vh;
+    position: relative; z-index: 3; }
+
+  #embers { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+  #vignette {
+    position: fixed; inset: 0; z-index: 6; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(26, 18, 46, .75) 100%);
+    opacity: 0; transition: opacity 2.5s ease;
+  }
+  #flash {
+    position: fixed; inset: 0; z-index: 7; pointer-events: none;
+    opacity: 0; transition: opacity .5s ease-out;
+  }
 
   @keyframes rise {
     from { opacity: 0; transform: translateY(6px); }
@@ -76,6 +88,66 @@
     border-radius: 0 4px 4px 0;
   }
   .li { margin: 6px 0 6px 26px; text-indent: -14px; padding-left: 14px; }
+  .art {
+    font-family: "Courier New", ui-monospace, Menlo, monospace;
+    white-space: pre; text-align: center;
+    font-size: 12.5px; line-height: 1.3;
+    color: #b8934e; margin: 16px 0 4px;
+    text-shadow: 0 0 10px rgba(224, 168, 74, .22);
+    animation: rise .45s ease-out both;
+    overflow-x: auto; user-select: none;
+  }
+  .art.dark {
+    color: var(--shadow); text-shadow: 0 0 10px rgba(122, 106, 158, .35);
+    animation: rise .45s ease-out both, artFlicker 3.4s ease-in-out infinite 1s;
+  }
+  @keyframes artFlicker {
+    0%, 100% { opacity: 1; }
+    46% { opacity: .78; } 50% { opacity: .92; } 54% { opacity: .8; }
+  }
+  #titlecard .art { margin: 0 0 16px; font-size: 12px; }
+  .svgart {
+    margin: 20px auto 6px; max-width: 440px;
+    animation: rise .5s ease-out both;
+  }
+  .svgart svg {
+    width: 100%; height: auto; display: block;
+    filter: drop-shadow(0 4px 18px rgba(224, 168, 74, .07));
+  }
+  .svgart.dark svg { filter: drop-shadow(0 4px 18px rgba(122, 106, 158, .16)); }
+  #titlecard h1 { animation: titleGlow 5s ease-in-out infinite; }
+  @keyframes titleGlow {
+    0%, 100% { text-shadow: 0 0 40px rgba(224, 168, 74, .22); }
+    50%      { text-shadow: 0 0 70px rgba(224, 168, 74, .5), 0 0 20px rgba(224, 168, 74, .25); }
+  }
+  #choices .opt { animation: rise .4s ease-out both; }
+  button.opt:active { transform: translateX(2px) scale(.985); }
+  button.opt:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    #embers { display: none; }
+  }
+
+  /* ---- mobile ---- */
+  button.opt { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  @media (max-width: 540px) {
+    body { font-size: 16px; line-height: 1.6; }
+    #frame { padding: 10px 14px 45vh; }
+    .hdr { font-size: 18.5px; letter-spacing: 2.5px; margin: 34px 0 16px; }
+    .q { margin-left: 2px; padding-left: 12px; }
+    .note, .grim, .omen { padding: 8px 11px; }
+    .li { margin-left: 18px; }
+    button.opt { padding: 13px 34px 13px 13px; margin: 7px 0; }
+    button.opt::after { right: 11px; }
+    #titlecard { padding: 44px 10px 16px; }
+    #titlecard h1 { font-size: 25px; letter-spacing: 4px; }
+    #titlecard .art { font-size: 9px; }
+    #titlecard .sub { font-size: 14px; }
+    #statusbar { font-size: 12px; padding: 8px 0 10px; }
+    #statusbar .chip { padding: 2px 8px; margin: 0 4px 4px 0; }
+    .svgart { max-width: 100%; margin-top: 14px; }
+    .art { font-size: 10px; }
+  }
   .rulebreak {
     border: none; height: 1px; margin: 30px auto; max-width: 420px;
     background: linear-gradient(90deg, transparent, var(--border), transparent);
@@ -135,9 +207,15 @@
 </style>
 </head>
 <body>
+<canvas id="embers"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
 <div id="frame">
   <div id="statusbar"></div>
   <div id="titlecard">
+    <pre class="art">           /&gt;
+ (}══════[████]:::::::::::::::::::&gt;
+           \&gt;</pre>
     <h1>The Last Hero</h1>
     <div class="sub">every hero who ever knocked at your door was somebody's whole world</div>
   </div>
@@ -178,16 +256,117 @@ const log = document.getElementById("log");
 const choicesEl = document.getElementById("choices");
 const statusbar = document.getElementById("statusbar");
 
+let anchorScrolling = false;  // once true, scrolling is driven by scene anchors, not the log tail
+
 function scrollDown() {
+  if (anchorScrolling) return;
   window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
 }
+
+function scrollToScene(anchor) {
+  // Wait a beat so the resolved promise has appended the scene's content,
+  // then bring the top of the new scene into view (under the status bar).
+  setTimeout(() => {
+    const bar = statusbar.offsetHeight || 0;
+    const y = anchor.getBoundingClientRect().top + window.scrollY - bar - 14;
+    window.scrollTo({ top: Math.max(0, y), behavior: "smooth" });
+  }, 40);
+}
+/* Staggered reveal: elements appended in the same tick unfold line by line. */
+let batchCount = 0, batchTimer = null;
+function stagger(node) {
+  node.style.animationDelay = Math.min(batchCount * 110, 1400) + "ms";
+  batchCount += 1;
+  clearTimeout(batchTimer);
+  batchTimer = setTimeout(() => { batchCount = 0; }, 60);
+}
+
 function el(cls, text) {
   const d = document.createElement("div");
   d.className = cls;
   d.textContent = text;
+  stagger(d);
   log.appendChild(d);
   scrollDown();
   return d;
+}
+
+/* ---------------------------------------------------------------- effects */
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const vignette = document.getElementById("vignette");
+const flashEl = document.getElementById("flash");
+
+function flash(color) {
+  if (reducedMotion) return;
+  flashEl.style.transition = "none";
+  flashEl.style.background = color;
+  flashEl.style.opacity = "1";
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    flashEl.style.transition = "opacity .6s ease-out";
+    flashEl.style.opacity = "0";
+  }));
+}
+
+/* Embers: a slow drift of sparks rising past the text. Modes shift the mood. */
+const emberModes = {
+  ember: { count: 26, colors: ["224,168,74", "201,107,74", "216,201,163"], up: true,  speed: .35, size: 2.2 },
+  dawn:  { count: 70, colors: ["255,214,120", "224,168,74", "255,240,200"], up: true,  speed: .8,  size: 2.6 },
+  ash:   { count: 45, colors: ["122,106,158", "138,122,92", "90,80,110"],   up: false, speed: .5,  size: 2.4 },
+};
+const emberState = { mode: emberModes.ember, parts: [] };
+
+(function embers() {
+  if (reducedMotion) return;
+  const canvas = document.getElementById("embers");
+  const ctx = canvas.getContext("2d");
+  let w, h;
+  function resize() { w = canvas.width = innerWidth; h = canvas.height = innerHeight; }
+  addEventListener("resize", resize);
+  resize();
+  function spawn() {
+    const m = emberState.mode;
+    return {
+      x: Math.random() * w,
+      y: m.up ? h + 10 : -10,
+      vx: (Math.random() - .5) * .3,
+      vy: (m.up ? -1 : 1) * (m.speed * (.5 + Math.random())),
+      r: Math.random() * m.size + .6,
+      a: Math.random() * .5 + .15,
+      c: m.colors[Math.floor(Math.random() * m.colors.length)],
+      wob: Math.random() * Math.PI * 2,
+    };
+  }
+  function tick() {
+    const m = emberState.mode;
+    ctx.clearRect(0, 0, w, h);
+    while (emberState.parts.length < m.count) emberState.parts.push(spawn());
+    if (emberState.parts.length > m.count) emberState.parts.length = m.count;
+    for (let i = 0; i < emberState.parts.length; i++) {
+      const p = emberState.parts[i];
+      p.wob += .02;
+      p.x += p.vx + Math.sin(p.wob) * .25;
+      p.y += p.vy;
+      const flick = .75 + Math.sin(p.wob * 3) * .25;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.c},${(p.a * flick).toFixed(3)})`;
+      ctx.fill();
+      if (p.y < -20 || p.y > h + 20 || p.x < -20 || p.x > w + 20)
+        emberState.parts[i] = spawn();
+    }
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+
+function setEmberMode(name) {
+  emberState.mode = emberModes[name] || emberModes.ember;
+  emberState.parts.length = 0;
+}
+
+function setDreadVeil(dread) {
+  vignette.style.opacity = String(Math.min(.95, (dread / 100) * .95));
 }
 const say   = (t) => el("p", t);
 const quote = (t) => el("q", t);
@@ -209,17 +388,23 @@ function choose(prompt, options) {
       const p = document.createElement("div");
       p.className = "prompt";
       p.textContent = prompt;
+      stagger(p);
       choicesEl.appendChild(p);
     }
     options.forEach(([label, value, style]) => {
       const b = document.createElement("button");
       b.className = "opt" + (style === "dark" ? " dark" : "");
       b.textContent = label;
+      stagger(b);
       b.onclick = () => {
         choicesEl.innerHTML = "";
-        if (prompt) el("past", prompt);
-        el("chosen", "➤ " + label);
+        let anchor = null;
+        if (prompt) anchor = el("past", prompt);
+        const chosenEl = el("chosen", "➤ " + label);
+        if (!anchor) anchor = chosenEl;
+        anchorScrolling = true;
         resolve(value);
+        scrollToScene(anchor);
       };
       choicesEl.appendChild(b);
     });
@@ -228,6 +413,262 @@ function choose(prompt, options) {
 }
 const pause = () => choose("", [["Read on", null]]);
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/* ---------------------------------------------------------------- art */
+
+const ART = {
+  sword: String.raw`           />
+ (}══════[████]:::::::::::::::::::>
+           \>`,
+  hall: String.raw`             |>
+        _____|._____
+       /            \
+      /  ()      ()  \
+     |     ______     |
+     |    |  __  |    |
+     |    | |  | |    |
+ ____|____|_|__|_|____|____
+ ░░░░░░░░░░░░░░░░░░░░░░░░░░`,
+  council: String.raw`          (
+          )
+        ┌─┴─┐
+  ┌─────┴───┴─────────┐
+  │  ~~~  ~~   ~~~~   │
+  └─┬───────────────┬─┘
+    │               │`,
+  armory: String.raw`     __            />
+    /  \          //
+   | () |    [█]══════════>
+    \__/          \\
+     ││            \>`,
+  library: String.raw`          (
+           )
+         ┌─┴─┐
+   ______│   │______
+  │▓│░│▒│ ─── │▓│░│▒│
+  │▓│░│▒│ ▓▓▓ │▓│░│▒│
+  └─┴─┴─┴─────┴─┴─┴─┘`,
+  dorm: String.raw`  ┌─┐_____   ┌─┐_____   ┌─┐_____
+  │o│     │  │o│     │  │o│     │
+  └─┴─────┘  └─┴─────┘  └─┴─────┘`,
+  chronicle: String.raw`     ______________
+    /       ┃      \
+   /  ~~~~  ┃ ~~~~  \
+  |  ~~~    ┃   ~~~  |
+  |  ~~~~   ┃  ~~~~  |
+   \________┃_______/`,
+  map: String.raw`  ┌─ ─ ─ ─ ─ ─ ─ ─ ─┐
+  │  ▲▲    ~~   ✕   │
+  │   ▲   ·····     │
+  │  ~~~    ▲▲  ░░  │
+  └─ ─ ─ ─ ─ ─ ─ ─ ─┘`,
+  omen: String.raw`    ░░░░░░░░░░░░░░░
+   ░    _______   ░░
+  ░    /  (◙)  \    ░
+   ░░  \_______/  ░░
+     ░░░░░░░░░░░░░`,
+  road: String.raw`    /\        /\     /\
+   /\/\   o  /\/\   /\/\
+    ││   /|\  ││     ││
+  ~~~~~~ / \ ~~~~~~~~~~~~`,
+  ret: String.raw`    _________
+   |  _____  |
+   | |:::::| |
+   | |:::::| |
+   | |___▪_| |
+  _|_________|_`,
+  door: String.raw`   .    ┌─────┐    .    .
+     .  │▓▓▓▓▓│  .
+   .    │▓▓▓▓▓│       .
+        │▓▓▓▓▓│   .
+  ______│_____│___________`,
+  dawn: String.raw`         \  │  /
+      .   \ │ /   .
+   ── ── ─( ◙ )─ ── ──
+  ______________________
+  ~~~~~~~~~~~~~~~~~~~~~~`,
+  grey: String.raw`  ░░▒▒▒░░░▒▒░░░░▒▒▒░░
+     ░░░  |>  ░░▒▒░
+      ____|._____
+     | ▪       ▪ |
+  ░░▒▒░░░▒▒▒░░░▒▒░░░▒░`,
+  night: String.raw`           |>
+      _____|._____
+     |  ▪       ▪ |
+     |  ▪   __  ▪ |
+   __|______││____|__
+  /                  \
+ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓`,
+  visitor: String.raw`    ______
+   |  __  |     o   ///
+   | |  | |    /|\  ///
+   | |  | |    / \   ///
+  _|_|__|_|_____________`,
+};
+
+/* SVG scene art: layered silhouettes in the game's palette, lightly animated. */
+const SVGART = {
+hall: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Hall at night">
+<defs><radialGradient id="hallg"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".8"/><stop offset="100%" stop-color="#e0a84a" stop-opacity="0"/></radialGradient></defs>
+<circle cx="52" cy="26" r="1.3" fill="#d8c9a3" opacity=".5"/><circle cx="128" cy="16" r="1" fill="#d8c9a3" opacity=".4"/><circle cx="388" cy="24" r="1.2" fill="#d8c9a3" opacity=".5"/><circle cx="446" cy="58" r="1" fill="#d8c9a3" opacity=".35"/><circle cx="90" cy="52" r="1" fill="#d8c9a3" opacity=".3"/>
+<circle cx="414" cy="38" r="14" fill="#d8c9a3" opacity=".16"/>
+<path d="M0 150 Q240 116 480 154 L480 180 0 180 Z" fill="#171209"/>
+<rect x="175" y="78" width="130" height="72" fill="#231b10"/>
+<path d="M163 78 L240 34 317 78 Z" fill="#2c2315"/>
+<rect x="238" y="18" width="3" height="20" fill="#2c2315"/><path d="M241 20 L263 25 241 31 Z" fill="#8a5a2a"/>
+<ellipse cx="203" cy="112" rx="18" ry="15" fill="url(#hallg)" opacity=".5"><animate attributeName="opacity" values=".35;.6;.45;.6;.35" dur="4s" repeatCount="indefinite"/></ellipse>
+<ellipse cx="277" cy="112" rx="18" ry="15" fill="url(#hallg)" opacity=".5"><animate attributeName="opacity" values=".55;.4;.6;.4;.55" dur="5s" repeatCount="indefinite"/></ellipse>
+<rect x="196" y="103" width="14" height="19" fill="#e0a84a" opacity=".85"/><rect x="270" y="103" width="14" height="19" fill="#e0a84a" opacity=".85"/>
+<path d="M231 150 L231 120 Q240 110 249 120 L249 150 Z" fill="#0e0a05"/>
+</svg>`,
+council: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The council table by candlelight">
+<defs><radialGradient id="coung"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".55"/><stop offset="100%" stop-color="#e0a84a" stop-opacity="0"/></radialGradient></defs>
+<ellipse cx="240" cy="72" rx="120" ry="62" fill="url(#coung)"><animate attributeName="opacity" values=".7;1;.8;1;.7" dur="3.2s" repeatCount="indefinite"/></ellipse>
+<path d="M70 112 L410 112 445 152 35 152 Z" fill="#231b10"/>
+<rect x="110" y="100" width="86" height="12" rx="5" fill="#4a3a24"/><rect x="118" y="103" width="70" height="1.6" fill="#8a7a5c" opacity=".6"/><rect x="118" y="107" width="52" height="1.6" fill="#8a7a5c" opacity=".45"/>
+<rect x="300" y="96" width="60" height="16" rx="2" fill="#2c2315"/><path d="M306 100 L348 104 M306 108 L336 106" stroke="#8a7a5c" stroke-width="1" opacity=".5"/>
+<rect x="234" y="74" width="12" height="38" fill="#cbbb95"/><ellipse cx="240" cy="74" rx="7" ry="2.6" fill="#a89670"/>
+<path d="M240 52 Q247 63 240 73 Q233 63 240 52 Z" fill="#e0a84a"><animate attributeName="opacity" values="1;.7;.95;.75;1" dur="1.3s" repeatCount="indefinite"/></path>
+<circle cx="240" cy="60" r="3" fill="#fff1c9" opacity=".9"><animate attributeName="r" values="3;2.2;3;2.5;3" dur="1.3s" repeatCount="indefinite"/></circle>
+</svg>`,
+armory: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A shield and sword on the armory wall">
+<rect x="130" y="22" width="220" height="126" rx="4" fill="#1d150c" stroke="#2c2315" stroke-width="3"/>
+<circle cx="200" cy="84" r="30" fill="#2c2315" stroke="#8a5a2a" stroke-width="4"/>
+<circle cx="200" cy="84" r="7" fill="#e0a84a" opacity=".85"/>
+<path d="M200 58 L200 110 M176 84 L224 84" stroke="#8a5a2a" stroke-width="2.4" opacity=".7"/>
+<g transform="rotate(35 288 84)"><rect x="284" y="34" width="9" height="76" rx="3" fill="#b0a894"/><rect x="268" y="110" width="41" height="8" rx="3" fill="#8a5a2a"/><rect x="284" y="118" width="9" height="18" rx="3" fill="#5a4426"/><circle cx="288.5" cy="140" r="5" fill="#e0a84a" opacity=".8"/></g>
+<line x1="279" y1="52" x2="290" y2="66" stroke="#fff1c9" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;.8;0;0" dur="4.5s" repeatCount="indefinite"/></line>
+</svg>`,
+library: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The library shelves and a candle">
+<defs><radialGradient id="libg"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".5"/><stop offset="100%" stop-color="#e0a84a" stop-opacity="0"/></radialGradient></defs>
+<rect x="96" y="20" width="130" height="130" fill="#1d150c" stroke="#2c2315" stroke-width="3"/><rect x="254" y="20" width="130" height="130" fill="#1d150c" stroke="#2c2315" stroke-width="3"/>
+<line x1="96" y1="64" x2="226" y2="64" stroke="#2c2315" stroke-width="3"/><line x1="96" y1="108" x2="226" y2="108" stroke="#2c2315" stroke-width="3"/>
+<line x1="254" y1="64" x2="384" y2="64" stroke="#2c2315" stroke-width="3"/><line x1="254" y1="108" x2="384" y2="108" stroke="#2c2315" stroke-width="3"/>
+<g fill="#5a4426"><rect x="104" y="34" width="9" height="28"/><rect x="116" y="30" width="9" height="32"/><rect x="128" y="36" width="9" height="26"/><rect x="142" y="31" width="9" height="31"/><rect x="156" y="35" width="9" height="27"/><rect x="170" y="30" width="9" height="32"/><rect x="184" y="34" width="9" height="28"/><rect x="262" y="33" width="9" height="29"/><rect x="274" y="30" width="9" height="32"/><rect x="288" y="35" width="9" height="27"/><rect x="302" y="31" width="9" height="31"/><rect x="316" y="34" width="9" height="28"/><rect x="330" y="30" width="9" height="32"/></g>
+<g fill="#4a3a5c"><rect x="198" y="32" width="9" height="30"/><rect x="211" y="35" width="9" height="27"/><rect x="344" y="33" width="9" height="29"/><rect x="357" y="30" width="9" height="32"/><rect x="104" y="78" width="9" height="30"/><rect x="117" y="80" width="9" height="28"/><rect x="262" y="78" width="9" height="30"/><rect x="276" y="81" width="9" height="27"/></g>
+<g fill="#3f5a4a"><rect x="131" y="79" width="9" height="29"/><rect x="145" y="82" width="9" height="26"/><rect x="159" y="78" width="9" height="30"/><rect x="290" y="79" width="9" height="29"/><rect x="304" y="82" width="9" height="26"/><rect x="318" y="78" width="9" height="30"/></g>
+<ellipse cx="240" cy="126" rx="34" ry="22" fill="url(#libg)"><animate attributeName="opacity" values=".7;1;.8;1;.7" dur="2.8s" repeatCount="indefinite"/></ellipse>
+<rect x="235" y="118" width="10" height="30" fill="#cbbb95"/><path d="M240 102 Q246 112 240 120 Q234 112 240 102 Z" fill="#e0a84a"><animate attributeName="opacity" values="1;.7;1;.8;1" dur="1.4s" repeatCount="indefinite"/></path>
+<circle cx="150" cy="120" r="1.4" fill="#e0a84a" opacity=".4"><animateTransform attributeName="transform" type="translate" from="0 12" to="0 -26" dur="7s" repeatCount="indefinite"/></circle>
+<circle cx="322" cy="130" r="1.2" fill="#e0a84a" opacity=".35"><animateTransform attributeName="transform" type="translate" from="0 8" to="0 -30" dur="9s" repeatCount="indefinite"/></circle>
+</svg>`,
+dorm: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The dormitory, beds in moonlight">
+<rect x="208" y="20" width="64" height="52" fill="#10141f" stroke="#2c2315" stroke-width="3"/>
+<line x1="240" y1="20" x2="240" y2="72" stroke="#2c2315" stroke-width="3"/><line x1="208" y1="46" x2="272" y2="46" stroke="#2c2315" stroke-width="3"/>
+<circle cx="256" cy="34" r="8" fill="#d8c9a3" opacity=".35"/>
+<polygon points="208,72 272,72 300,150 180,150" fill="#d8c9a3" opacity=".05"><animate attributeName="opacity" values=".04;.08;.05;.08;.04" dur="7s" repeatCount="indefinite"/></polygon>
+<line x1="30" y1="150" x2="450" y2="150" stroke="#231b10" stroke-width="4"/>
+<g><rect x="60" y="96" width="12" height="54" fill="#2c2315"/><rect x="72" y="116" width="86" height="22" rx="6" fill="#231b10"/><rect x="76" y="112" width="24" height="10" rx="4" fill="#8a7a5c" opacity=".7"/><rect x="100" y="114" width="56" height="14" rx="4" fill="#3a2f20"/></g>
+<g><rect x="196" y="96" width="12" height="54" fill="#2c2315"/><rect x="208" y="116" width="86" height="22" rx="6" fill="#231b10"/><rect x="212" y="112" width="24" height="10" rx="4" fill="#8a7a5c" opacity=".7"/><rect x="236" y="114" width="56" height="14" rx="4" fill="#3a2f20"/></g>
+<g><rect x="332" y="96" width="12" height="54" fill="#2c2315"/><rect x="344" y="116" width="86" height="22" rx="6" fill="#231b10"/><rect x="348" y="112" width="24" height="10" rx="4" fill="#8a7a5c" opacity=".7"/><rect x="372" y="114" width="56" height="14" rx="4" fill="#3a2f20"/></g>
+</svg>`,
+chronicle: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The great chronicle, open on its lectern">
+<path d="M215 168 L265 168 255 120 225 120 Z" fill="#231b10"/>
+<path d="M150 66 Q205 48 240 66 Q275 48 330 66 L330 112 Q275 96 240 112 Q205 96 150 112 Z" fill="#cbbb95" opacity=".9"/>
+<line x1="240" y1="66" x2="240" y2="112" stroke="#8a7a5c" stroke-width="2"/>
+<g stroke="#8a7a5c" stroke-width="1.6" opacity=".55"><line x1="164" y1="72" x2="226" y2="66"/><line x1="164" y1="80" x2="226" y2="74"/><line x1="164" y1="88" x2="218" y2="83"/><line x1="254" y1="66" x2="316" y2="72"/><line x1="254" y1="74" x2="316" y2="80"/></g>
+<line x1="254" y1="83" x2="308" y2="88" stroke="#e0a84a" stroke-width="1.8"><animate attributeName="opacity" values=".4;1;.5;1;.4" dur="3.5s" repeatCount="indefinite"/></line>
+<path d="M318 96 Q340 60 356 38 L360 42 Q342 66 326 100 Z" fill="#8a7a5c" opacity=".8"/>
+<circle cx="322" cy="102" r="3" fill="#1d150c" stroke="#8a7a5c"/>
+</svg>`,
+map: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The map table, a route marked in wax">
+<rect x="88" y="18" width="304" height="134" rx="5" fill="#241c12" stroke="#8a7a5c" stroke-width="2" opacity=".95"/>
+<g fill="none" stroke="#8a7a5c" stroke-width="2" opacity=".7"><path d="M120 74 L136 48 152 74"/><path d="M144 78 L160 52 176 78"/><path d="M300 52 L314 32 328 52"/></g>
+<path d="M110 130 Q180 112 240 124 Q310 138 372 116" fill="none" stroke="#5a6f8a" stroke-width="3" opacity=".55"/>
+<circle cx="130" cy="98" r="4" fill="#8a7a5c" opacity=".8"/><circle cx="248" cy="60" r="4" fill="#8a7a5c" opacity=".8"/>
+<path d="M130 98 Q190 70 248 60 Q310 52 350 84" fill="none" stroke="#e0a84a" stroke-width="2.4" stroke-dasharray="7 7"><animate attributeName="stroke-dashoffset" from="0" to="-56" dur="3.5s" repeatCount="indefinite"/></path>
+<g stroke="#c96b4a" stroke-width="3.4"><line x1="343" y1="77" x2="357" y2="91"/><line x1="357" y1="77" x2="343" y2="91"/><animate attributeName="opacity" values="1;.45;1" dur="2.4s" repeatCount="indefinite"/></g>
+</svg>`,
+omen: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An eye opens in the clouds">
+<defs><radialGradient id="omeng"><stop offset="0%" stop-color="#a894d6" stop-opacity=".9"/><stop offset="100%" stop-color="#7a6a9e" stop-opacity="0"/></radialGradient></defs>
+<ellipse cx="120" cy="50" rx="90" ry="20" fill="#241f33" opacity=".7"/><ellipse cx="360" cy="42" rx="100" ry="18" fill="#241f33" opacity=".6"/><ellipse cx="240" cy="140" rx="150" ry="20" fill="#241f33" opacity=".5"/>
+<ellipse cx="240" cy="88" rx="72" ry="34" fill="#0d0a14" stroke="#7a6a9e" stroke-width="2"/>
+<circle cx="240" cy="88" r="17" fill="url(#omeng)"><animate attributeName="r" values="17;19;17;18;17" dur="4s" repeatCount="indefinite"/></circle>
+<ellipse cx="240" cy="88" rx="4" ry="13" fill="#0d0a14"/>
+<path d="M168 88 Q240 44 312 88" fill="none" stroke="#7a6a9e" stroke-width="2" opacity=".7"/>
+<path d="M168 88 Q240 132 312 88" fill="none" stroke="#7a6a9e" stroke-width="2" opacity=".7"/>
+</svg>`,
+road: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A small party on the road through the pines">
+<defs><radialGradient id="roadg"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".7"/><stop offset="100%" stop-color="#e0a84a" stop-opacity="0"/></radialGradient></defs>
+<circle cx="410" cy="34" r="12" fill="#d8c9a3" opacity=".16"/>
+<g fill="#131a13"><path d="M40 140 L62 78 84 140 Z"/><path d="M78 140 L98 92 118 140 Z"/><path d="M356 140 L378 74 400 140 Z"/><path d="M396 140 L416 90 436 140 Z"/><path d="M120 140 L138 100 156 140 Z"/></g>
+<path d="M0 172 Q160 148 240 152 Q340 158 480 144 L480 180 0 180 Z" fill="#171209"/>
+<ellipse cx="248" cy="118" rx="30" ry="22" fill="url(#roadg)" opacity=".5"><animate attributeName="opacity" values=".4;.6;.45;.6;.4" dur="2.6s" repeatCount="indefinite"/></ellipse>
+<g fill="#0d0a06"><circle cx="222" cy="112" r="5"/><path d="M215 118 L229 118 227 142 217 142 Z"/><circle cx="244" cy="110" r="5"/><path d="M237 116 L251 116 249 142 239 142 Z"/><circle cx="266" cy="113" r="5"/><path d="M259 119 L273 119 271 142 261 142 Z"/></g>
+<line x1="252" y1="118" x2="256" y2="128" stroke="#3a2f20" stroke-width="2"/><circle cx="256" cy="130" r="3.4" fill="#e0a84a"><animate attributeName="opacity" values="1;.65;1;.75;1" dur="1.2s" repeatCount="indefinite"/></circle>
+</svg>`,
+ret: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Hall door open, light spilling out">
+<defs><linearGradient id="retg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".5"/><stop offset="100%" stop-color="#e0a84a" stop-opacity="0"/></linearGradient></defs>
+<rect x="140" y="30" width="200" height="130" fill="#231b10"/>
+<path d="M128 30 L240 0 352 30 Z" fill="#2c2315"/>
+<path d="M214 160 L214 72 Q240 54 266 72 L266 160 Z" fill="#3a2c18"/>
+<path d="M220 160 L220 76 Q240 60 260 76 L260 160 Z" fill="#e8b96a"><animate attributeName="opacity" values=".9;1;.92;1;.9" dur="3s" repeatCount="indefinite"/></path>
+<polygon points="220,160 260,160 306,180 174,180" fill="url(#retg)"/>
+<circle cx="240" cy="102" r="9" fill="#0d0a06"/><path d="M228 112 L252 112 250 160 230 160 Z" fill="#0d0a06"/>
+<rect x="158" y="60" width="14" height="18" fill="#e0a84a" opacity=".5"/><rect x="308" y="60" width="14" height="18" fill="#e0a84a" opacity=".5"/>
+</svg>`,
+door: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A door standing open in an empty field">
+<defs><linearGradient id="doorg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a6a9e" stop-opacity=".35"/><stop offset="100%" stop-color="#7a6a9e" stop-opacity="0"/></linearGradient></defs>
+<line x1="0" y1="150" x2="480" y2="150" stroke="#171209" stroke-width="4"/>
+<g stroke="#2c2315" stroke-width="2" opacity=".8"><line x1="70" y1="150" x2="66" y2="140"/><line x1="110" y1="150" x2="112" y2="141"/><line x1="150" y1="150" x2="146" y2="142"/><line x1="330" y1="150" x2="334" y2="140"/><line x1="380" y1="150" x2="377" y2="142"/><line x1="420" y1="150" x2="424" y2="141"/></g>
+<rect x="206" y="34" width="68" height="116" fill="#050308" stroke="#4a3f66" stroke-width="6"/>
+<polygon points="206,150 274,150 320,180 160,180" fill="url(#doorg)"/>
+<path d="M240 66 Q222 86 240 108 Q258 126 240 144" fill="none" stroke="#7a6a9e" stroke-width="2" opacity=".5"><animateTransform attributeName="transform" type="translate" values="0 0;6 -4;0 0;-5 3;0 0" dur="8s" repeatCount="indefinite"/></path>
+<circle cx="226" cy="58" r="1.6" fill="#a894d6" opacity=".6"><animateTransform attributeName="transform" type="translate" from="0 0" to="-14 -26" dur="6s" repeatCount="indefinite"/></circle>
+<circle cx="256" cy="120" r="1.4" fill="#a894d6" opacity=".5"><animateTransform attributeName="transform" type="translate" from="0 0" to="16 -30" dur="7s" repeatCount="indefinite"/></circle>
+</svg>`,
+dawn: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The sun rises gold over the hills">
+<defs><linearGradient id="dawng" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e0a84a" stop-opacity="0"/><stop offset="100%" stop-color="#e0a84a" stop-opacity=".3"/></linearGradient><radialGradient id="dawns"><stop offset="0%" stop-color="#ffd678" stop-opacity=".9"/><stop offset="100%" stop-color="#ffd678" stop-opacity="0"/></radialGradient></defs>
+<rect x="0" y="0" width="480" height="130" fill="url(#dawng)"/>
+<ellipse cx="240" cy="122" rx="110" ry="60" fill="url(#dawns)"><animate attributeName="opacity" values=".8;1;.85;1;.8" dur="5s" repeatCount="indefinite"/></ellipse>
+<circle cx="240" cy="122" r="30" fill="#ffd678"/>
+<g stroke="#ffd678" stroke-width="2" opacity=".6"><line x1="240" y1="70" x2="240" y2="52"/><line x1="196" y1="86" x2="182" y2="72"/><line x1="284" y1="86" x2="298" y2="72"/><line x1="176" y1="118" x2="156" y2="114"/><line x1="304" y1="118" x2="324" y2="114"/><animate attributeName="opacity" values=".4;.75;.5;.75;.4" dur="4s" repeatCount="indefinite"/></g>
+<path d="M0 136 Q120 116 240 132 Q360 146 480 124 L480 180 0 180 Z" fill="#171209"/>
+<path d="M0 156 Q160 140 480 152 L480 180 0 180 Z" fill="#100c07"/>
+</svg>`,
+grey: `<svg viewBox="0 0 480 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Hall dim in drifting fog">
+<path d="M0 150 Q240 126 480 152 L480 170 0 170 Z" fill="#141019"/>
+<g opacity=".55"><rect x="185" y="76" width="110" height="64" fill="#231b28"/><path d="M175 76 L240 42 305 76 Z" fill="#2a2133"/><rect x="204" y="100" width="12" height="16" fill="#8a7a5c" opacity=".5"/><rect x="264" y="100" width="12" height="16" fill="#8a7a5c" opacity=".5"/></g>
+<ellipse cx="160" cy="110" rx="170" ry="18" fill="#7a6a9e" opacity=".1"><animateTransform attributeName="transform" type="translate" values="-36 0;36 0;-36 0" dur="14s" repeatCount="indefinite"/></ellipse>
+<ellipse cx="330" cy="132" rx="190" ry="16" fill="#7a6a9e" opacity=".12"><animateTransform attributeName="transform" type="translate" values="30 0;-30 0;30 0" dur="11s" repeatCount="indefinite"/></ellipse>
+<ellipse cx="240" cy="86" rx="200" ry="14" fill="#7a6a9e" opacity=".08"><animateTransform attributeName="transform" type="translate" values="-24 0;24 0;-24 0" dur="17s" repeatCount="indefinite"/></ellipse>
+</svg>`,
+night: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Hall alone against the night, windows lit">
+<defs><linearGradient id="nightg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#0d0a14" stop-opacity=".9"/><stop offset="100%" stop-color="#0d0a14" stop-opacity="0"/></linearGradient></defs>
+<circle cx="70" cy="30" r="1.2" fill="#d8c9a3" opacity=".4"/><circle cx="150" cy="20" r="1" fill="#d8c9a3" opacity=".3"/><circle cx="350" cy="26" r="1.1" fill="#d8c9a3" opacity=".35"/><circle cx="430" cy="44" r="1" fill="#d8c9a3" opacity=".3"/>
+<path d="M0 154 Q240 112 480 158 L480 180 0 180 Z" fill="#0d0a08"/>
+<rect x="188" y="76" width="104" height="62" fill="#1a1410"/>
+<path d="M178 76 L240 42 302 76 Z" fill="#221a12"/>
+<rect x="204" y="98" width="13" height="18" fill="#e0a84a"><animate attributeName="opacity" values="1;.7;1;.85;1" dur="2.4s" repeatCount="indefinite"/></rect>
+<rect x="262" y="98" width="13" height="18" fill="#e0a84a"><animate attributeName="opacity" values=".85;1;.7;1;.85" dur="3.1s" repeatCount="indefinite"/></rect>
+<path d="M231 138 L231 114 Q240 106 249 114 L249 138 Z" fill="#e8b96a" opacity=".9"/>
+<rect x="0" y="60" width="480" height="120" fill="url(#nightg)"/>
+</svg>`,
+visitor: `<svg viewBox="0 0 480 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A cloaked figure at the door, in the rain">
+<defs><linearGradient id="visg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e0a84a" stop-opacity=".4"/><stop offset="100%" stop-color="#e0a84a" stop-opacity=".08"/></linearGradient></defs>
+<rect x="186" y="24" width="108" height="146" fill="#0e0a05" stroke="#2c2315" stroke-width="5"/>
+<rect x="192" y="30" width="96" height="140" fill="url(#visg)"/>
+<circle cx="240" cy="84" r="11" fill="#0d0a06"/>
+<path d="M226 80 Q240 62 254 80 L254 94 226 94 Z" fill="#0d0a06"/>
+<path d="M222 96 L258 96 264 170 216 170 Z" fill="#0d0a06"/>
+<ellipse cx="240" cy="172" rx="40" ry="4" fill="#5a6f8a" opacity=".25"/>
+<g stroke="#8a9ab8" stroke-width="1.6" opacity=".5"><line x1="60" y1="10" x2="54" y2="26"/><line x1="110" y1="40" x2="104" y2="56"/><line x1="80" y1="90" x2="74" y2="106"/><line x1="130" y1="120" x2="124" y2="136"/><line x1="350" y1="20" x2="344" y2="36"/><line x1="400" y1="60" x2="394" y2="76"/><line x1="370" y1="110" x2="364" y2="126"/><line x1="430" y1="130" x2="424" y2="146"/><line x1="40" y1="140" x2="34" y2="156"/><line x1="450" y1="30" x2="444" y2="46"/><animateTransform attributeName="transform" type="translate" from="6 -30" to="-6 30" dur=".9s" repeatCount="indefinite"/></g>
+</svg>`,
+};
+
+function art(key, dark) {
+  const d = document.createElement("div");
+  if (SVGART[key]) {
+    d.className = "svgart" + (dark ? " dark" : "");
+    d.innerHTML = SVGART[key];
+  } else {
+    d.className = "art" + (dark ? " dark" : "");
+    d.textContent = ART[key];
+  }
+  stagger(d);
+  log.appendChild(d);
+  scrollDown();
+}
 
 /* ================================================================ content */
 
@@ -670,6 +1111,7 @@ class Game {
 
   updateStatus() {
     statusbar.style.display = "block";
+    setDreadVeil(this.dread);
     const phil = this.philosophy();
     statusbar.innerHTML =
       `<span class="chip">Day <b>${this.day}</b></span>` +
@@ -771,6 +1213,7 @@ class Game {
       if (this.dread >= t && !this.omensSeen.includes(t)) {
         this.omensSeen.push(t);
         header("An Omen");
+        art("omen", true);
         omen(text);
         const act = await choose("The Hall looks to you. What answer do you give the dark?", [
           ["Send scouts east. You would rather know than wonder.", "scout"],
@@ -812,6 +1255,8 @@ class Game {
     });
     this.visitors.push([h, m]);
     header("A Visitor");
+    flash("rgba(200, 212, 255, .22)");
+    art("visitor");
     say("She comes in with the storm. Nineteen, maybe, with a hunter's bow across her back and rain running off her as if the sky has spent the whole day trying to drown her. She plants her feet the way brave people do when they are terrified.");
     quote('"They say you crossed the Blackwood once and came out breathing. My father went in nine days ago. So tell me the truth, because everyone else has stopped meeting my eyes. If I follow his trail, do I come back out?"');
     say("(She waits at the Council Table. They always wait. It is the hoping that never learns to.)");
@@ -864,6 +1309,7 @@ class Game {
     if (m.dayOut <= m.events.length) {
       const [text, bestStance, helpful] = m.events[m.dayOut - 1];
       header(`Word from the Road, Day ${m.dayOut}`);
+      art("road");
       say(`(${names}, somewhere out past ${m.place}.)`);
       say(text);
       quote(this.resolveEvent(m, bestStance, helpful));
@@ -910,6 +1356,7 @@ class Game {
 
   async resolveMission(m) {
     header("The Return");
+    art("ret");
     const names = m.party.map((h) => h.name).join(", ");
     let score = this.partyScore(m) + R.randint(1, 6) - m.danger;
     if (m.stance === "bold") score += 1;
@@ -1021,6 +1468,7 @@ class Game {
   }
 
   missionDisaster(m, names) {
+    flash("rgba(201, 107, 74, .14)");
     grim(`Of the party you sent to ${m.place}, this is what the road gives back:`);
     const dead = R.choice(m.party);
     dead.alive = false;
@@ -1048,6 +1496,7 @@ class Game {
 
   async councilTable() {
     header("The Council Table");
+    art("council");
     const opts = [];
     this.visitors.forEach(([h, m], i) =>
       opts.push([`Hear ${h.name} out. (${m.title().toLowerCase()}.)`, ["visitor", i]]));
@@ -1155,6 +1604,7 @@ class Game {
 
   armoryRoom() {
     header("The Armory");
+    art("armory");
     if (!this.armory.length) {
       say("Empty racks and clean dust-shadows where things used to hang. Everything you own is out in the world, doing work. That is the only honest place for any of it.");
       return;
@@ -1167,6 +1617,7 @@ class Game {
 
   async library() {
     header("The Library");
+    art("library");
     quote('The librarian does not look up. She turns a page with a gloved finger and says, "Ask."');
     const subjects = [];
     for (const [, m] of [...this.visitors, ...this.pending])
@@ -1200,6 +1651,7 @@ class Game {
 
   mapTable() {
     header("The Map Table");
+    art("map");
     say("Six regions under pinned vellum. Wax drips, little flags, a burn mark shaped like a thumb. Someone keeps this table honest, and it costs them sleep.");
     for (const r of this.regions) {
       const line = `${r.name}: ${this.regionWord(r)}. ${cap(r.desc)}.`;
@@ -1212,6 +1664,7 @@ class Game {
 
   dormitory() {
     header("The Dormitory");
+    art("dorm");
     if (!this.roster.length) {
       say("Rows of empty beds, blankets folded to a soldier's edge. Waiting. A dormitory is just a promise the Hall makes to people it has not met yet.");
       return;
@@ -1225,6 +1678,7 @@ class Game {
 
   chronicleRoom() {
     header("The Chronicle");
+    art("chronicle");
     if (!this.chronicle.length) {
       say("The great book lies open at a blank page, and the blankness is not empty. It is expectant. The first story is yours to cause.");
       return;
@@ -1237,6 +1691,7 @@ class Game {
   entrance() {
     this.updateStatus();
     header(`The Hall, Day ${this.day}`);
+    art("hall");
     say(R.choice(FLAVOUR));
     if (this.dread >= 30 && R.random() < 0.5)
       omen(R.choice([
@@ -1342,6 +1797,7 @@ class Game {
 
     // Act 2
     header("The Door in the Field");
+    art("door", true);
     say("It is exactly what the refugee girl kept drawing. A door, standing open in a field with no house around it, and the long dark coming through like water finding a crack it has been promised for a thousand years.");
     if (party.length) {
       const reader = party.find((h) => h.capability === "lore");
@@ -1380,11 +1836,18 @@ class Game {
     const phil = this.philosophy();
     const title = phil ? PHILOSOPHY[phil][0] : "the Keeper of the Hall";
     if (tier === "dawn") {
+      setEmberMode("dawn");
+      setDreadVeil(0);
+      flash("rgba(255, 214, 120, .25)");
+      art("dawn");
       note("THE DAWN COMES.");
       say("The door is shut. The land remembers how to have mornings, slowly, the way a numb hand remembers warmth. In the years after, the people who resettle the Eastmarch plant lantern-trees at their gates. Nobody explains the custom. Everybody keeps it.");
       say(`The Chronicle's last page names every hero who marched, first name and true name both. It closes with a single line about you, ${title}: "They asked the right questions of the right people. Then, and this mattered more, they stood aside and let the answers be brave."`);
       this.record("The Shadow was ended. The dawn came up gold.");
     } else if (tier === "hardwon") {
+      setEmberMode("dawn");
+      setDreadVeil(0);
+      art("dawn");
       note("A HARD-WON DAWN.");
       const lost = party.length > 1 ? R.choice(party.slice(1)) : null;
       if (lost) {
@@ -1399,11 +1862,16 @@ class Game {
       }
       say(`The east heals the way people heal: slowly, crookedly, stronger at the broken places and strange there too. The Chronicle calls you ${title}. The bards get most of the story wrong. The ones who were there let them, because the wrong version is easier to sleep after.`);
     } else if (tier === "pyrrhic") {
+      setEmberMode("ash");
+      art("grey", true);
       grim("THE LONG GREY.");
       say("The door is not shut. It is narrowed. Wedged with courage and paid for in names the Chronicle needs three pages to hold. The Shadow is not ended. It has been taught, for the first time in its long cold life, to wait. Teaching it cost everything it cost.");
       say(`The Hall stands. The watch goes on. And somewhere down the west road, right now, a new ranger is walking toward your gate through the rain. Nineteen, soaked through, rehearsing the question. You will lie to her less than most would, ${title}. That is what you have instead of victory, and some nights it is almost enough.`);
       this.record("The Shadow was held, not beaten. The watch continues.");
     } else {
+      setEmberMode("ash");
+      setDreadVeil(100);
+      art("night", true);
       grim("THE LONG NIGHT.");
       say("The histories of what came next are written in other lands, by people who heard it third-hand and softened it for the children. The east went out like a lamp. Then the border towns. And the last light anyone swears to, the detail that survives every retelling because no one has the heart to cut it, is a hall on a hill. Windows burning. Doors open. Taking people in until the dark reached the very step.");
       say(`No Chronicle of yours survives. The refugees carry the story out instead, and retell it until it hardens into something like scripture. The Hall never closed. Say whatever else you like about its master, ${title}. It never closed.`);
@@ -1519,7 +1987,11 @@ class Game {
   .fallen li { color: #c96b4a; }
   .fallen b { color: #d98d70; }
   .closing { margin-top: 50px; text-align: center; color: #8a7a5c; font-style: italic; }
+  .art { font-family: "Courier New", monospace; white-space: pre; text-align: center;
+    font-size: 12px; line-height: 1.3; color: #b8934e; margin-bottom: 14px;
+    text-shadow: 0 0 10px rgba(224, 168, 74, .22); }
 </style></head><body><div class="page">
+  <pre class="art">${ART.sword}</pre>
   <h1>The Last Hero</h1>
   <div class="sub">the bound chronicle of a campaign of ${this.day} days</div>
   <div class="ending">${esc(this.ending.title)}</div>
@@ -1556,6 +2028,7 @@ class Game {
 
   async recap() {
     header("The Story So Far");
+    art("chronicle");
     say(`Day ${this.day}. The fire kept in. The Chronicle open exactly where you left it, because some things in this world can still be trusted.`);
 
     const phil = this.philosophy();
